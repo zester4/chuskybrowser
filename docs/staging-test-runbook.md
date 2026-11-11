@@ -15,6 +15,7 @@ CHUSKY_ACCESS_KEY=<staging access key>
 Rules:
 - Use `CHUSKY_BASE_URL` for the staging host only. If it is missing or not `https`, stop and ask.
 - Use only staging values. If the user sends a production URL or key, do not use it. Ask them to confirm it is staging.
+- These scripts test the server directly with `CHUSKY_ACCESS_KEY`. Customer traffic goes through the built-in gateway (`/v1`) with `CHUSKYBROWSER_API_KEY`, which these scripts do not use.
 - Check the server is up before any test: `curl -s -o /dev/null -w "%{http_code}" "$CHUSKY_BASE_URL/health"` should return `200`.
 
 ## 2. Confirm the branch under test
@@ -58,4 +59,5 @@ The scripts close their own tabs and sessions. If a run stops early, check the h
 
 - Handoff state is in-process. A staging server with more than one instance can give false failures.
 - The two-user test is not in these scripts yet. Do not report multi-user isolation as tested.
+- Gateway (`/v1`) behavior is covered by `tests/unit/gateway.e2e.test.js` against a fake upstream, not by these live scripts. Customer keys and tab records are in memory until the persistent store is in place, so they reset on every restart.
 - Typed text (including test passwords) is sent but never printed by the scripts. Do not add logging of it.

@@ -67,6 +67,32 @@ The Docker image includes yt-dlp. For local dev, install it for the `/youtube/tr
 
 ## Quick Start
 
+### Hosted (customers)
+
+Get an API key from your chuskybrowser dashboard. It is the only setting you need. The server address is built in, so you never set a URL.
+
+```bash
+export CHUSKYBROWSER_API_KEY="cb_live_..."
+```
+
+**MCP** (Claude Code, Cursor, Codex and other MCP clients):
+
+```json
+{
+  "mcpServers": {
+    "chuskybrowser": {
+      "command": "npx",
+      "args": ["-y", "chuskybrowser-mcp"],
+      "env": { "CHUSKYBROWSER_API_KEY": "cb_live_..." }
+    }
+  }
+}
+```
+
+**OpenClaw:** set `CHUSKYBROWSER_API_KEY` in the environment of the OpenClaw process. Leave the plugin's URL empty.
+
+The sections below are for self-hosting your own server.
+
 ### OpenClaw Plugin
 
 ```bash
@@ -620,6 +646,7 @@ Browser behavior can be tuned in `chusky.config.json`:
 | `CHUSKY_PORT` | Server port | `9377` |
 | `PORT` | Server port (fallback, for platforms like Fly.io, Railway) | `9377` |
 | `CHUSKY_BIND_HOST` | Optional server bind host. Set to `127.0.0.1` for loopback-only access or `0.0.0.0` for IPv4 on all interfaces. When unset, Node uses its default all-interface binding. | - |
+| `CHUSKYBROWSER_API_KEY` | Customer key (`cb_live_...`) for the hosted service. Clients use the built-in address; no URL is needed. Self-hosters can ignore it. | - |
 | `CHUSKY_API_KEY` | Enable cookie import endpoint (disabled if unset) | - |
 | `CHUSKY_ADMIN_KEY` | Required for `POST /stop` | - |
 | `CHUSKY_ACCESS_KEY` | If set, all routes (except `/health`, cookie import, and `/stop`) require `Authorization: Bearer <key>`. Lets you safely expose the server beyond loopback. | - |

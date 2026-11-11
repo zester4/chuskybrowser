@@ -21,8 +21,7 @@ You can also create the client directly, which lets you pass settings explicitly
 import { ChuskyClient } from './chusky-client.mjs';
 
 const browser = new ChuskyClient({
-  baseUrl: 'https://browser.yourcompany.com',
-  accessKey: process.env.CHUSKY_ACCESS_KEY,
+  apiKey: process.env.CHUSKYBROWSER_API_KEY,
   userId: 'customer-42',
 });
 ```
@@ -31,9 +30,11 @@ const browser = new ChuskyClient({
 
 | Setting | Where it comes from | Required | Notes |
 |---|---|---|---|
-| `baseUrl` | `CHUSKY_BASE_URL` | Yes | The server address, for example `http://localhost:9377`. A trailing slash is removed. |
-| `accessKey` | `CHUSKY_ACCESS_KEY` | Yes | The shared secret the server checks on every call. |
-| `userId` | Your session | Yes | Must be a non-empty string. |
+| `apiKey` | `CHUSKYBROWSER_API_KEY` | Yes | Your API key from the chuskybrowser dashboard. It is the only setting most people need. |
+| `userId` | Your session | Yes | Must be a non-empty string. Each user you serve gets their own browser. |
+| `baseUrl` | `CHUSKYBROWSER_BASE_URL` | No | Leave it out. Only set it to point at a different gateway, for testing. |
+
+If you run your own server instead, pass `baseUrl` (from `CHUSKY_BASE_URL`) and `accessKey` (from `CHUSKY_ACCESS_KEY`) and leave out `apiKey`.
 
 Values passed to the constructor take priority over `.env`, and `.env` takes priority over any value that is only set in the shell. If a required setting is missing, the constructor throws an error that names it.
 

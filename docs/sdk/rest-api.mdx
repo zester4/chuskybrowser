@@ -10,11 +10,13 @@ Every route the SDK uses is also a plain HTTP route. The complete, generated ref
 
 ## Authentication
 
-Every route that changes state or reads a user's data needs the access key:
+Every route that changes state or reads a user's data needs your API key:
 
 ```
-Authorization: Bearer <CHUSKY_ACCESS_KEY>
+Authorization: Bearer <CHUSKYBROWSER_API_KEY>
 ```
+
+The hosted gateway accepts this key. Self-hosted servers accept the server's `CHUSKY_ACCESS_KEY`.
 
 Health checks don't need it.
 

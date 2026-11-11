@@ -4,6 +4,5 @@ mcp_servers:
     command: "npx"
     args: ["-y", "chuskybrowser-mcp"]
     env:
-      CHUSKY_PORT: "9377"
-      # Replace with your access key. Hermes passes only the variables listed here.
-      CHUSKY_ACCESS_KEY: "your-access-key"
+      # Replace with your API key. Hermes passes only the variables listed here.
+      CHUSKYBROWSER_API_KEY: "your-api-key"

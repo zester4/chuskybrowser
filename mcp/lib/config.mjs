@@ -10,7 +10,10 @@ export function loadMcpConfig() {
   return {
     port: parseInt(process.env.CHUSKY_PORT || process.env.PORT || '9377', 10),
     apiKey: process.env.CHUSKY_API_KEY || '',
-    accessKey: (process.env.CHUSKY_ACCESS_KEY || '').trim(),
+    // Customers set CHUSKYBROWSER_API_KEY. Self-hosted setups keep CHUSKY_ACCESS_KEY.
+    accessKey: (process.env.CHUSKYBROWSER_API_KEY || process.env.CHUSKY_ACCESS_KEY || '').trim(),
+    // True when the customer key is set, so requests go through the gateway.
+    gateway: Boolean(process.env.CHUSKYBROWSER_API_KEY),
     cookiesDir: process.env.CHUSKY_COOKIES_DIR || join(os.homedir(), '.chusky', 'cookies'),
   };
 }

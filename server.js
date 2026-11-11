@@ -63,6 +63,8 @@ import { resolveUploadPaths } from './lib/upload-paths.js';
 import { acquirePageLease, hasActivePageLeases, isPageLeased, releasePageLease, setLeasedPage } from './lib/page-lease.js';
 import { createReporter, createTabHealthTracker, collectResourceSnapshot, classifyProxyError, browserProcessTreeRssMb, browserProcessNameRssMb } from './lib/reporter.js';
 import { mountDocs } from './lib/openapi.js';
+import { createGatewayApp } from './gateway/http.js';
+import { createMemoryStore } from './gateway/store.js';
 import { initSentry, captureException as sentryCaptureException, setupExpressErrorHandler as setupSentryErrorHandler, flush as sentryFlush } from './lib/sentry.js';
 import { prepareExternalCamoufoxExecutable } from './lib/camoufox-executable.js';
 import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
@@ -241,6 +243,26 @@ const FLY_MACHINE_ID = fly.machineId;
 
 // Route tab requests to the owning machine via fly-replay header.
 app.use('/tabs/:tabId', fly.replayMiddleware(log));
+
+// Customer gateway: /v1/* is served with customer keys (cb_live_...) and forwarded
+// to this same server on loopback with the master key. It must mount before the
+// access-key middleware below, which only accepts the master key.
+// Only /v1 is mounted here. The gateway's own catch-all 404 would otherwise swallow
+// every other route. Live-view routes are already served by this server.
+// Keys and tab records live in memory for now and are lost on restart.
+const gatewayStore = createMemoryStore();
+if (CONFIG.nodeEnv === 'production') {
+  log('warn', 'gateway running with the memory store: customer keys and tab records are lost on restart');
+}
+const gatewayApp = createGatewayApp({
+  store: gatewayStore,
+  chuskyUrl: `http://127.0.0.1:${CONFIG.port}`,
+  masterKey: CONFIG.accessKey,
+  cookieKey: CONFIG.apiKey,
+});
+app.use((req, res, next) => (req.path === '/v1' || req.path.startsWith('/v1/')
+  ? gatewayApp(req, res, next)
+  : next()));
 
 // Access-key middleware: gates every route when CHUSKY_ACCESS_KEY is set.
 // Exempts /health (Docker healthcheck) and routes that have their own

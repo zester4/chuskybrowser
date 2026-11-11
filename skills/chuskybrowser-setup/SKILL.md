@@ -57,7 +57,7 @@ Never ask the user to type a password in chat. The handoff exists so they type i
 
 | Status | Meaning | What to do |
 |---|---|---|
-| 401 | Access key missing or wrong | Check `CHUSKY_ACCESS_KEY` on the client and the server match |
+| 401 | API key missing, wrong or revoked | Check `CHUSKYBROWSER_API_KEY`. For a self-hosted server, check `CHUSKY_ACCESS_KEY` matches on the client and the server |
 | 404 | Tab missing, closed, or owned by another userId | Check the userId, then open a new tab |
 | 409 `human_in_control` | A person holds the tab | Wait; tell the user |
 | 409 `handoff_not_active` | Control link asked for with no handoff | Call `checkpoint` or start a handoff first |

@@ -859,7 +859,9 @@ export function buildRequest(name, args, ctx) {
  * @throws {Error} if CHUSKY_API_KEY is unset.
  */
 export async function buildCookieRequest(args, ctx, config) {
-  if (!config.apiKey) {
+  // Customer mode (CHUSKYBROWSER_API_KEY): the gateway holds the server's cookie key,
+  // so the host sends the customer key instead.
+  if (!config.apiKey && !config.gateway) {
     throw new Error(
       'CHUSKY_API_KEY is not set. Cookie import is disabled unless both the server and the host (MCP/OpenClaw) have CHUSKY_API_KEY.'
     );
@@ -872,7 +874,7 @@ export async function buildCookieRequest(args, ctx, config) {
   return {
     method: 'POST',
     path: `/sessions/${encodeURIComponent(ctx.userId)}/cookies`,
-    auth: 'apiKey',
+    auth: config.gateway ? 'accessKey' : 'apiKey',
     responseKind: 'json',
     body: { cookies },
     meta: { imported: cookies.length, userId: ctx.userId },

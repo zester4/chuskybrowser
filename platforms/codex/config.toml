@@ -2,6 +2,5 @@
 [mcp_servers.chuskybrowser]
 command = "npx"
 args = ["-y", "chuskybrowser-mcp"]
-env = { CHUSKY_PORT = "9377" }
-# Forwards CHUSKY_ACCESS_KEY from your shell environment. Set it there, not in this file.
-env_vars = ["CHUSKY_ACCESS_KEY"]
+# Forwards CHUSKYBROWSER_API_KEY from your shell environment. Set it there, not in this file.
+env_vars = ["CHUSKYBROWSER_API_KEY"]

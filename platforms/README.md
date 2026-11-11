@@ -13,16 +13,17 @@ chuskybrowser runs as a local server (`npx chuskybrowser`) and exposes its tools
 
 ## Steps (every tool)
 
-1. Set up the server once:
+1. Create an API key on your chuskybrowser account and set it in your shell or `.env`:
    ```
-   npx chuskybrowser doctor    # checks Node, the browser engine, the port and the access key
-   npx chuskybrowser           # starts the server on http://localhost:9377
+   CHUSKYBROWSER_API_KEY=cb_live_...
    ```
-2. Set `CHUSKY_ACCESS_KEY` in your shell or `.env` if the server will be reachable by anyone else. The MCP
-   entry forwards it; never paste it into a file you commit.
+   The MCP entry forwards it. Never paste it into a file you commit. Nothing else is needed: the MCP package
+   already knows where to reach chuskybrowser.
+2. Running your own server instead? Start it with `npx chuskybrowser`, then set `CHUSKY_BASE_URL` (your server's
+   address) and `CHUSKY_ACCESS_KEY` (the server's access key) in the same place. Those are for self-hosting only.
 3. Copy the matching config above into your tool's config file, then restart the tool.
-4. Ask the tool to open a page with chuskybrowser. If it can't see the tools, check that the server is running
-   and that `CHUSKY_PORT` matches the port you started it on.
+4. Ask the tool to open a page with chuskybrowser. If it can't see the tools, check that your key is set and
+   that the tool was restarted after you set it.
 
-The MCP entry talks to the server on `localhost` only. To use a remote server, run the MCP package on the same
-machine as the tool and point it at the server with the REST API instead (see `../skills/chuskybrowser-setup`).
+Self-hosted servers: the MCP entry reads `CHUSKY_BASE_URL` and `CHUSKY_ACCESS_KEY` when `CHUSKYBROWSER_API_KEY`
+is not set, and falls back to `http://localhost:9377` when neither is set.

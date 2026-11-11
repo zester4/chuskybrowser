@@ -1,13 +1,14 @@
 # Chusky in each agent
 
 One MCP server serves every agent that speaks MCP. Each agent only needs its own config
-or plugin file. The server is `chuskybrowser-mcp`, which reads three variables:
+or plugin file. The server is `chuskybrowser-mcp`, which reads two variables:
 
 | Variable | Meaning |
 |---|---|
-| `CHUSKY_BASE_URL` | Your Chusky server, e.g. `https://your-app.up.railway.app` |
-| `CHUSKY_ACCESS_KEY` | The server's access key (sent as a bearer token) |
+| `CHUSKYBROWSER_API_KEY` | Your API key from the dashboard. The server already knows where chuskybrowser is |
 | `CHUSKY_USER_ID` | The one user this agent acts for. Every call uses it. The model never supplies it |
+
+Self-hosted servers use `CHUSKY_BASE_URL` and `CHUSKY_ACCESS_KEY` instead of the API key.
 
 Keep the key out of shared files. Put the three values in the agent's environment.
 
@@ -34,7 +35,7 @@ tools. Until then, point the command at the repo copy:
 [mcp_servers.chuskybrowser]
 command = "npx"
 args = ["-y", "chuskybrowser-mcp"]
-env_vars = ["CHUSKY_BASE_URL", "CHUSKY_ACCESS_KEY", "CHUSKY_USER_ID"]
+env_vars = ["CHUSKYBROWSER_API_KEY", "CHUSKY_USER_ID"]
 ```
 
 `env_vars` passes the values from the shell that starts Codex, so the key is not written
@@ -49,8 +50,7 @@ mcp_servers:
     command: "npx"
     args: ["-y", "chuskybrowser-mcp"]
     env:
-      CHUSKY_BASE_URL: "https://your-app.up.railway.app"
-      CHUSKY_ACCESS_KEY: "<set in your environment, not in this file>"
+      CHUSKYBROWSER_API_KEY: "<set in your environment, not in this file>"
       CHUSKY_USER_ID: "user-42"
 ```
 

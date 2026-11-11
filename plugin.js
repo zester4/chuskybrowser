@@ -83,8 +83,9 @@ async function fetchApi(baseUrl, path, options = {}) {
         "Content-Type": "application/json",
         ...(options.headers || {}),
     };
-    if (cfg.accessKey && !headers.Authorization) {
-        headers.Authorization = `Bearer ${cfg.accessKey}`;
+    const key = cfg.customerKey || cfg.accessKey;
+    if (key && !headers.Authorization) {
+        headers.Authorization = `Bearer ${key}`;
     }
     const url = `${baseUrl}${path}`;
     const res = await fetch(url, { ...options, headers });
@@ -97,8 +98,14 @@ async function fetchApi(baseUrl, path, options = {}) {
 export default function register(api) {
     const cfg = (api.pluginConfig ?? api.config);
     const port = cfg.port || 9377;
-    const baseUrl = cfg.url || `http://localhost:${port}`;
-    const autoStart = cfg.autoStart !== false; // default true
+    const gateway = loadConfig();
+    const gatewayMode = Boolean(gateway.customerKey);
+    const baseUrl = cfg.url || (gatewayMode ? gateway.customerGatewayUrl : `http://localhost:${port}`);
+    // Customers never see the address: messages say "chuskybrowser" in gateway mode.
+    const displayUrl = gatewayMode ? "chuskybrowser" : baseUrl;
+    // Config for the shared tool contracts: in gateway mode the customer key goes out as the access key.
+    const clientCfg = { ...cfg, accessKey: gatewayMode ? gateway.customerKey : cfg.accessKey, gateway: gatewayMode };
+    const autoStart = !gatewayMode && cfg.autoStart !== false; // default true; customers run no local server
     const pluginDir = getPluginDir();
     const fallbackUserId = `chusky-${randomUUID()}`;
     // Auto-start server if configured (default: true)
@@ -106,7 +113,7 @@ export default function register(api) {
         (async () => {
             const alreadyRunning = await checkServerRunning(baseUrl);
             if (alreadyRunning) {
-                api.logger?.info?.(`Camoufox server already running at ${baseUrl}`);
+                api.logger?.info?.(`Camoufox server already running at ${displayUrl}`);
             }
             else {
                 try {
@@ -132,7 +139,7 @@ export default function register(api) {
             async execute(_id, params) {
                 const userId = ctx.agentId || fallbackUserId;
                 const cfg = loadConfig();
-                const { spec, payload } = await runTool(def.name, params, { userId, sessionKey: ctx.sessionKey }, baseUrl, cfg);
+                const { spec, payload } = await runTool(def.name, params, { userId, sessionKey: ctx.sessionKey }, baseUrl, clientCfg);
                 return { content: adaptResponse(spec, payload), details: {} };
             },
         }), { name: def.name });
@@ -146,21 +153,21 @@ export default function register(api) {
                 case "status":
                     try {
                         const health = await fetchApi(baseUrl, "/health");
-                        return { text: `Camoufox server at ${baseUrl}: ${JSON.stringify(health)}` };
+                        return { text: `Camoufox server at ${displayUrl}: ${JSON.stringify(health)}` };
                     }
                     catch {
-                        return { text: `Camoufox server at ${baseUrl}: not reachable` };
+                        return { text: `Camoufox server at ${displayUrl}: not reachable` };
                     }
                 case "start":
                     if (serverProcess) {
                         return { text: "Camoufox server already running (managed)" };
                     }
                     if (await checkServerRunning(baseUrl)) {
-                        return { text: `Camoufox server already running at ${baseUrl}` };
+                        return { text: `Camoufox server already running at ${displayUrl}` };
                     }
                     try {
                         serverProcess = await startServer(pluginDir, port, api.logger, cfg);
-                        return { text: `Started Camoufox server at ${baseUrl}` };
+                        return { text: `Started Camoufox server at ${displayUrl}` };
                     }
                     catch (err) {
                         return { text: `Failed to start Camoufox server: ${err.message}` };
@@ -211,14 +218,14 @@ export default function register(api) {
                 try {
                     const health = (await fetchApi(baseUrl, "/health"));
                     console.log(`Camoufox server: ${health.status}`);
-                    console.log(`  URL: ${baseUrl}`);
+                    console.log(`  URL: ${displayUrl}`);
                     console.log(`  Engine: ${health.engine || "camoufox"}`);
                     console.log(`  Active tabs: ${health.activeTabs ?? 0}`);
                     console.log(`  Managed: ${serverProcess !== null}`);
                 }
                 catch {
                     console.log(`Camoufox server: not reachable`);
-                    console.log(`  URL: ${baseUrl}`);
+                    console.log(`  URL: ${displayUrl}`);
                     console.log(`  Managed: ${serverProcess !== null}`);
                     console.log(`  Hint: Run 'openclaw chusky start' to start the server`);
                 }
@@ -232,13 +239,13 @@ export default function register(api) {
                     return;
                 }
                 if (await checkServerRunning(baseUrl)) {
-                    console.log(`Camoufox server already running at ${baseUrl}`);
+                    console.log(`Camoufox server already running at ${displayUrl}`);
                     return;
                 }
                 try {
                     console.log(`Starting chusky server on port ${port}...`);
                     serverProcess = await startServer(pluginDir, port, api.logger, cfg);
-                    console.log(`Camoufox server started at ${baseUrl}`);
+                    console.log(`Camoufox server started at ${displayUrl}`);
                 }
                 catch (err) {
                     console.error(`Failed to start server: ${err.message}`);
@@ -266,7 +273,7 @@ export default function register(api) {
                 console.log("================================");
                 console.log("");
                 console.log("Current settings:");
-                console.log(`  Server URL: ${baseUrl}`);
+                console.log(`  Server URL: ${displayUrl}`);
                 console.log(`  Port: ${port}`);
                 console.log(`  Auto-start: ${autoStart}`);
                 console.log("");

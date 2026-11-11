@@ -31,6 +31,7 @@ const getPluginDir = (): string => {
 
 interface PluginConfig {
   url?: string;
+  accessKey?: string;
   autoStart?: boolean;
   port?: number;
   maxSessions?: number;
@@ -112,8 +113,9 @@ async function fetchApi(
     "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) || {}),
   };
-  if (cfg.accessKey && !headers.Authorization) {
-    headers.Authorization = `Bearer ${cfg.accessKey}`;
+  const key = cfg.customerKey || cfg.accessKey;
+  if (key && !headers.Authorization) {
+    headers.Authorization = `Bearer ${key}`;
   }
   const url = `${baseUrl}${path}`;
   const res = await fetch(url, { ...options, headers });
@@ -127,8 +129,14 @@ async function fetchApi(
 export default function register(api: OpenClawPluginApi) {
   const cfg = (api.pluginConfig ?? api.config) as unknown as PluginConfig;
   const port = cfg.port || 9377;
-  const baseUrl = cfg.url || `http://localhost:${port}`;
-  const autoStart = cfg.autoStart !== false; // default true
+  const gateway = loadConfig();
+  const gatewayMode = Boolean(gateway.customerKey);
+  const baseUrl = cfg.url || (gatewayMode ? gateway.customerGatewayUrl : `http://localhost:${port}`);
+  // Customers never see the address: messages say "chuskybrowser" in gateway mode.
+  const displayUrl = gatewayMode ? "chuskybrowser" : baseUrl;
+  // Config for the shared tool contracts: in gateway mode the customer key goes out as the access key.
+  const clientCfg = { ...cfg, accessKey: gatewayMode ? gateway.customerKey : cfg.accessKey, gateway: gatewayMode };
+  const autoStart = !gatewayMode && cfg.autoStart !== false; // default true; customers run no local server
   const pluginDir = getPluginDir();
   const fallbackUserId = `chusky-${randomUUID()}`;
 
@@ -137,7 +145,7 @@ export default function register(api: OpenClawPluginApi) {
     (async () => {
       const alreadyRunning = await checkServerRunning(baseUrl);
       if (alreadyRunning) {
-        api.logger?.info?.(`Camoufox server already running at ${baseUrl}`);
+        api.logger?.info?.(`Camoufox server already running at ${displayUrl}`);
       } else {
         try {
           serverProcess = await startServer(pluginDir, port, api.logger, cfg);
@@ -167,7 +175,7 @@ export default function register(api: OpenClawPluginApi) {
           params as Record<string, unknown>,
           { userId, sessionKey: ctx.sessionKey },
           baseUrl,
-          cfg
+          clientCfg
         );
         return { content: adaptResponse(spec, payload), details: {} };
       },
@@ -184,20 +192,20 @@ export default function register(api: OpenClawPluginApi) {
         case "status":
           try {
             const health = await fetchApi(baseUrl, "/health");
-            return { text: `Camoufox server at ${baseUrl}: ${JSON.stringify(health)}` };
+            return { text: `Camoufox server at ${displayUrl}: ${JSON.stringify(health)}` };
           } catch {
-            return { text: `Camoufox server at ${baseUrl}: not reachable` };
+            return { text: `Camoufox server at ${displayUrl}: not reachable` };
           }
         case "start":
           if (serverProcess) {
             return { text: "Camoufox server already running (managed)" };
           }
           if (await checkServerRunning(baseUrl)) {
-            return { text: `Camoufox server already running at ${baseUrl}` };
+            return { text: `Camoufox server already running at ${displayUrl}` };
           }
           try {
             serverProcess = await startServer(pluginDir, port, api.logger, cfg);
-            return { text: `Started Camoufox server at ${baseUrl}` };
+            return { text: `Started Camoufox server at ${displayUrl}` };
           } catch (err) {
             return { text: `Failed to start Camoufox server: ${(err as Error).message}` };
           }
@@ -263,13 +271,13 @@ export default function register(api: OpenClawPluginApi) {
                 activeTabs?: number;
               };
               console.log(`Camoufox server: ${health.status}`);
-              console.log(`  URL: ${baseUrl}`);
+              console.log(`  URL: ${displayUrl}`);
               console.log(`  Engine: ${health.engine || "camoufox"}`);
               console.log(`  Active tabs: ${health.activeTabs ?? 0}`);
               console.log(`  Managed: ${serverProcess !== null}`);
             } catch {
               console.log(`Camoufox server: not reachable`);
-              console.log(`  URL: ${baseUrl}`);
+              console.log(`  URL: ${displayUrl}`);
               console.log(`  Managed: ${serverProcess !== null}`);
               console.log(`  Hint: Run 'openclaw chusky start' to start the server`);
             }
@@ -284,13 +292,13 @@ export default function register(api: OpenClawPluginApi) {
               return;
             }
             if (await checkServerRunning(baseUrl)) {
-              console.log(`Camoufox server already running at ${baseUrl}`);
+              console.log(`Camoufox server already running at ${displayUrl}`);
               return;
             }
             try {
               console.log(`Starting chusky server on port ${port}...`);
               serverProcess = await startServer(pluginDir, port, api.logger, cfg);
-              console.log(`Camoufox server started at ${baseUrl}`);
+              console.log(`Camoufox server started at ${displayUrl}`);
             } catch (err) {
               console.error(`Failed to start server: ${(err as Error).message}`);
               process.exit(1);
@@ -318,7 +326,7 @@ export default function register(api: OpenClawPluginApi) {
             console.log("================================");
             console.log("");
             console.log("Current settings:");
-            console.log(`  Server URL: ${baseUrl}`);
+            console.log(`  Server URL: ${displayUrl}`);
             console.log(`  Port: ${port}`);
             console.log(`  Auto-start: ${autoStart}`);
             console.log("");

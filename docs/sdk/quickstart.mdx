@@ -18,11 +18,12 @@ npx chuskybrowser                 # starts the server on http://localhost:9377
 Copy the client file from the chuskybrowser repository into your project. It is one file with no dependencies, and it reads its settings from `.env`:
 
 ```
-CHUSKY_BASE_URL=http://localhost:9377
-CHUSKY_ACCESS_KEY=your-access-key
+CHUSKYBROWSER_API_KEY=cb_live_your-key
 ```
 
-Set `CHUSKY_ACCESS_KEY` on the server too. The client and the server must use the same key.
+That is the only setting you need. The client already knows where chuskybrowser is.
+
+Running your own server? Use `CHUSKY_BASE_URL` and `CHUSKY_ACCESS_KEY` instead, and set the same `CHUSKY_ACCESS_KEY` on the server.
 
 ## 3. Run a session
 

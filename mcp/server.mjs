@@ -43,7 +43,13 @@ const VERSION = JSON.parse(
 // package reads only its own environment settings; CHUSKY_BASE_URL overrides
 // the derived local URL.
 const CONFIG = loadMcpConfig();
-const BASE_URL = process.env.CHUSKY_BASE_URL || `http://localhost:${CONFIG.port}`;
+// Customers set only CHUSKYBROWSER_API_KEY and reach the built-in gateway address.
+// Self-hosted setups keep CHUSKY_BASE_URL (or fall back to localhost).
+const CUSTOMER_GATEWAY_URL = "https://chuskybrowser-production.up.railway.app/v1";
+const BASE_URL =
+  process.env.CHUSKYBROWSER_BASE_URL ||
+  (CONFIG.gateway ? CUSTOMER_GATEWAY_URL : process.env.CHUSKY_BASE_URL) ||
+  `http://localhost:${CONFIG.port}`;
 
 // Per-MCP-server userId so each host session gets an isolated chusky session
 // (cookie/storage partition). Falls back to a random id.

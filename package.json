@@ -166,6 +166,50 @@
       {
         "name": "agentcard_preset_attach",
         "description": "Attach one of the user's spending rules to one of their cards (default: the first card)."
+      },
+      {
+        "name": "chusky_viewer_link",
+        "description": "Get a live view link for a tab so the user can watch it. Set control to true to let the user click and type too (the agent is paused on the tab until released). Send the url to the user only, unchanged. Needs CHUSKY_ACCESS_KEY on the server."
+      },
+      {
+        "name": "chusky_extract",
+        "description": "Pull structured data from the page as JSON. Give a schema describing the fields you want and get the extracted values back. Prefer this to reading the whole snapshot when you only need specific fields."
+      },
+      {
+        "name": "chusky_select",
+        "description": "Choose an option in a native dropdown (select element). Give the element by ref from the snapshot, or by CSS selector."
+      },
+      {
+        "name": "chusky_upload",
+        "description": "Attach a file to a file input on the page. The file must already be in the server uploads folder; give its name or path inside that folder. Target the input by ref from the snapshot, or by CSS selector."
+      },
+      {
+        "name": "chusky_wait",
+        "description": "Wait until an element appears on the page, or for a fixed time. Use after an action that loads new content."
+      },
+      {
+        "name": "chusky_viewport",
+        "description": "Set the page size in pixels, for example to check a mobile or desktop layout."
+      },
+      {
+        "name": "chusky_checkpoint",
+        "description": "Check the page for something that needs a person (a login, a CAPTCHA, a confirmation). If one is found, the tab is handed to the user and the response includes a controlUrl to send them unchanged."
+      },
+      {
+        "name": "chusky_dismiss_overlays",
+        "description": "Close cookie banners, pop-ups and overlays that cover the page."
+      },
+      {
+        "name": "chusky_page_state",
+        "description": "Describe the current page: url, title, whether it is loading, and whether a person has control of the tab."
+      },
+      {
+        "name": "chusky_list_downloads",
+        "description": "List the files downloaded in a tab."
+      },
+      {
+        "name": "chusky_list_traces",
+        "description": "List recorded session traces for the current user, for debugging a run."
       }
     ]
   },
