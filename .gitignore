@@ -44,3 +44,7 @@ test-results/
 playwright-report/
 viewer-screenshots/
 bench-results/
+
+# Local customer keys (hashed) for testing
+.chusky-keys.json
+.chusky-keys.json.tmp

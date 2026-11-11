@@ -64,7 +64,7 @@ import { acquirePageLease, hasActivePageLeases, isPageLeased, releasePageLease, 
 import { createReporter, createTabHealthTracker, collectResourceSnapshot, classifyProxyError, browserProcessTreeRssMb, browserProcessNameRssMb } from './lib/reporter.js';
 import { mountDocs } from './lib/openapi.js';
 import { createGatewayApp } from './gateway/http.js';
-import { createMemoryStore } from './gateway/store.js';
+import { createGatewayStore } from './gateway/index.js';
 import { initSentry, captureException as sentryCaptureException, setupExpressErrorHandler as setupSentryErrorHandler, flush as sentryFlush } from './lib/sentry.js';
 import { prepareExternalCamoufoxExecutable } from './lib/camoufox-executable.js';
 import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
@@ -249,9 +249,9 @@ app.use('/tabs/:tabId', fly.replayMiddleware(log));
 // access-key middleware below, which only accepts the master key.
 // Only /v1 is mounted here. The gateway's own catch-all 404 would otherwise swallow
 // every other route. Live-view routes are already served by this server.
-// Keys and tab records live in memory for now and are lost on restart.
-const gatewayStore = createMemoryStore();
-if (CONFIG.nodeEnv === 'production') {
+// Keys and tab records use CHUSKY_GATEWAY_STORE: memory (default) or file (local keys in a JSON file).
+const gatewayStore = createGatewayStore(CONFIG);
+if (CONFIG.nodeEnv === 'production' && CONFIG.gatewayStore === 'memory') {
   log('warn', 'gateway running with the memory store: customer keys and tab records are lost on restart');
 }
 const gatewayApp = createGatewayApp({
