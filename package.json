@@ -1,6 +1,6 @@
 {
   "name": "chuskybrowser",
-  "version": "1.18.4",
+  "version": "1.19.0",
   "description": "Headless browser automation server and OpenClaw plugin for AI agents - anti-detection, element refs, and session isolation",
   "type": "module",
   "main": "server.js",

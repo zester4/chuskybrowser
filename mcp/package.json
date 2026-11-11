@@ -1,6 +1,6 @@
 {
   "name": "chuskybrowser-mcp",
-  "version": "1.18.4",
+  "version": "1.19.0",
   "description": "Standalone stdio MCP server exposing the chuskybrowser REST API as MCP tools (Claude Code, Codex, agy, Cursor, opencode). Proxies to an already-running chuskybrowser REST server — does not itself require the browser binary, Playwright, or the core server's dependencies. Initial MCP implementation contributed by @epicsagas.",
   "type": "module",
   "main": "server.mjs",
