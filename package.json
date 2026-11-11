@@ -41,6 +41,8 @@
     "chusky.config.json",
     "bin/chuskybrowser.js",
     "lib/",
+    "gateway/",
+    "agentcard/src/",
     "mcp/server.mjs",
     "mcp/package.json",
     "mcp/lib/config.mjs",
