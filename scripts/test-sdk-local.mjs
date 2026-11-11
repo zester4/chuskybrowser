@@ -65,17 +65,17 @@ if (tabId) {
     if (!s?.state?.kind) throw new Error('no state.kind');
     return `state ${s.state.kind}`;
   });
-  await check('snapshot contains page text', async () => {
+  await check('snapshot contains the page text', async () => {
     // Opening a tab returns once navigation starts, so poll until the text appears.
     let text = '';
     for (let i = 0; i < 15; i++) {
       const s = await client.snapshot(tabId);
       text = typeof s === 'string' ? s : (s?.snapshot || '');
-      if (/Example Domain/i.test(text)) return `${text.length} chars, after ${i + 1}s`;
+      if (/documentation examples|Example Domain/i.test(text)) return `${text.length} chars, after ${i + 1}s`;
       await new Promise((r) => setTimeout(r, 1000));
     }
     const head = text.replace(/\s+/g, ' ').slice(0, 160);
-    throw new Error(`"Example Domain" not found after 15s. Snapshot starts: "${head || '(empty)'}"`);
+    throw new Error(`page text not found after 15s. Snapshot starts: "${head || '(empty)'}"`);
   });
   await check('screenshot returns image bytes', async () => {
     const buf = await client.screenshot(tabId);
