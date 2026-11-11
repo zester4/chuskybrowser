@@ -251,6 +251,7 @@ app.use('/tabs/:tabId', fly.replayMiddleware(log));
 // every other route. Live-view routes are already served by this server.
 // Keys and tab records use CHUSKY_GATEWAY_STORE: memory (default) or file (local keys in a JSON file).
 const gatewayStore = createGatewayStore(CONFIG);
+log('info', `gateway key store: ${CONFIG.gatewayStore}${CONFIG.gatewayStore === 'file' ? ` (${CONFIG.gatewayKeyFile})` : ''}`);
 if (CONFIG.nodeEnv === 'production' && CONFIG.gatewayStore === 'memory') {
   log('warn', 'gateway running with the memory store: customer keys and tab records are lost on restart');
 }

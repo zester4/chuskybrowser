@@ -13,7 +13,9 @@ import { stdin, stdout } from 'node:process';
 import { ChuskyClient, ChuskyError } from '../skills/chuskybrowser-setup/scripts/chusky-client.mjs';
 
 // One line reader for both prompts, so typed and piped input both work.
-const lines = readline.createInterface({ input: stdin })[Symbol.asyncIterator]();
+// Close the readline interface itself. Destroying stdin directly crashes Node on Windows.
+const rl = readline.createInterface({ input: stdin, output: stdout, terminal: false });
+const lines = rl[Symbol.asyncIterator]();
 const ask = async (question) => {
   stdout.write(question);
   const { value } = await lines.next();
@@ -21,7 +23,7 @@ const ask = async (question) => {
 };
 const apiKey = await ask('API key (cb_live_...): ');
 const baseUrl = (await ask('Base URL [http://localhost:9377/v1]: ')) || 'http://localhost:9377/v1';
-process.stdin.destroy();
+rl.close();
 
 if (!apiKey.startsWith('cb_live_')) {
   console.log('FAIL key: keys start with cb_live_');
@@ -91,4 +93,5 @@ await check('wrong key is refused', async () => {
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+if (failed && failed === 1 && tabId === null) console.log('Hint: a 401 on open tab means the running server does not have this key. Stop every server window, start one with CHUSKY_GATEWAY_STORE=file in the same window, then rerun.');
+process.exitCode = failed ? 1 : 0;
