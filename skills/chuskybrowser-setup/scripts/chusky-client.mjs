@@ -12,7 +12,6 @@ import { loadDotEnv } from './lib-env.mjs';
 
 const ENV = { ...loadDotEnv(), ...process.env };
 
-// The gateway address is not set yet. Until it is, customer mode needs CHUSKYBROWSER_BASE_URL.
 // Built-in customer address. Customers never set or see it.
 export const DEFAULT_GATEWAY_URL = 'https://chuskybrowser-production.up.railway.app/v1';
 
