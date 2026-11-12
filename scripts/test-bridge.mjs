@@ -184,7 +184,10 @@ if (!payUser) {
       if (st?.status === 'linked' || st?.status === 'expired' || st?.status === 'conflict') break;
       await new Promise((r) => setTimeout(r, 5000));
     }
-    await check('card linked through the link', st?.status === 'linked', `status ${st?.status ?? 'unknown'}`);
+    await check('card linked through the link', async () => {
+      if (st?.status !== 'linked') throw new Error(`status ${st?.status ?? 'unknown'}`);
+      return 'linked';
+    });
   }
 
   await check('the user has a stored card', async () => {
