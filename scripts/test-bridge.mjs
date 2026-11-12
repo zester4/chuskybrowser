@@ -12,6 +12,10 @@
 // Exits 0 only if every check passes. The key and secret are never printed.
 
 import readline from 'node:readline/promises';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadEnvFile } from 'node:process';
 import { createHash } from 'node:crypto';
 import { stdin, stdout } from 'node:process';
 import { ChuskyClient, ChuskyError } from '../skills/chuskybrowser-setup/scripts/chusky-client.mjs';
@@ -19,16 +23,18 @@ import { ChuskyClient, ChuskyError } from '../skills/chuskybrowser-setup/scripts
 const BROWSER_V1 = 'https://chuskybrowser-production.up.railway.app/v1';
 const DEFAULT_FRONTEND = 'https://chuskybrowser.lovable.app';
 
-// Each answer can come from an environment variable instead of a prompt. That is the
-// reliable route on Windows terminals, where typed answers can go missing.
+// Settings come from the repo's .env file. Any value missing from .env is asked for.
+const ENV_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env');
+if (existsSync(ENV_PATH)) loadEnvFile(ENV_PATH);
+
 const rl = readline.createInterface({ input: stdin, output: stdout });
 const ask = async (question, envName) => {
-  if (envName && process.env[envName] !== undefined) return process.env[envName].trim();
+  if (envName && process.env[envName]?.trim()) return process.env[envName].trim();
   return (await rl.question(question)).trim();
 };
-const apiKey = await ask('Customer key (cb_live_...): ', 'CHUSKY_TEST_KEY');
-const secret = await ask('Internal secret: ', 'CHUSKY_TEST_SECRET');
-const frontend = ((await ask(`Frontend address [${DEFAULT_FRONTEND}]: `, 'CHUSKY_TEST_FRONTEND')) || DEFAULT_FRONTEND).replace(/\/+$/, '');
+const apiKey = await ask('Customer key (cb_live_...): ', 'CHUSKYBROWSER_API_KEY');
+const secret = await ask('Internal secret: ', 'CHUSKY_INTERNAL_SECRET');
+const frontend = ((await ask(`Frontend address [${DEFAULT_FRONTEND}]: `, 'CHUSKY_FRONTEND_URL')) || DEFAULT_FRONTEND).replace(/\/+$/, '');
 const payUser = await ask('End user ID with a stored card, for AgentCard checks (blank to skip the purchase checks): ', 'CHUSKY_TEST_PAY_USER');
 rl.close();
 
