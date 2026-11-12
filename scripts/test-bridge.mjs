@@ -189,7 +189,7 @@ if (!payUser) {
       merchant: 'Bridge Check Store',
       amount: 1,
       currency: 'usd',
-      psp: 'stripe',
+      psp: 'square',
       merchantOrigin: 'https://example.com',
     });
     if (!prep?.purchaseId) throw new Error('no purchaseId returned');

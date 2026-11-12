@@ -151,7 +151,7 @@ const app = express();
 
 // AgentCard, state and service. Boot never fails when AgentCard is not configured:
 // the routes answer 503 until credentials are set.
-const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: CONFIG.agentcard.stateFile, log });
+const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: CONFIG.agentcard.stateFile, environment: CONFIG.agentcard.environment, log });
 
 /**
  * @openapi

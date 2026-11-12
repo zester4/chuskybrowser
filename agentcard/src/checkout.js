@@ -97,7 +97,7 @@ function settlementFrom(value) {
  *   log?: (level: string, msg: string, fields?: object) => void,
  * }} deps
  */
-export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX_AMOUNT_CENTS, now = () => new Date().toISOString(), log = () => {} }) {
+export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX_AMOUNT_CENTS, environment = 'sandbox', now = () => new Date().toISOString(), log = () => {} }) {
   function owned(userId, id) {
     const p = store.getPurchase(id);
     if (!p || p.userId !== userId) throw codeError('Purchase not found', 'not_found');
@@ -312,6 +312,7 @@ export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX
         currency: input.currency,
         psp: input.psp,
         mode: 'token',
+        environment,
         merchant_origin: merchantOrigin,
         checkout_key: input.checkoutKey ?? randomUUID(),
       });

@@ -36,6 +36,10 @@ function sendError(res, err, log) {
   if (err instanceof AgentCardError && err.code === 'policy_invalid') {
     return res.status(400).json({ error: 'policy_invalid', message: err.message });
   }
+  if (err instanceof AgentCardError && err.status >= 400 && err.status < 500) {
+    log('warn', 'agentcard: request refused', { status: err.status, code: err.code });
+    return res.status(err.status).json({ error: err.code || 'agentcard_refused', message: err.message });
+  }
   if (err instanceof AgentCardError) {
     log('error', 'agentcard: upstream error', { status: err.status, code: err.code });
     return res.status(502).json({ error: 'agentcard_unavailable', upstreamStatus: err.status, retryable: err.retryable });

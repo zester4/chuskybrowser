@@ -88,6 +88,7 @@ export function createAgentCardService(options) {
     store,
     vault,
     maxAmountCents: options.maxAmountCents ?? DEFAULT_MAX_AMOUNT_CENTS,
+    environment: options.environment ?? 'sandbox',
     log,
   });
 
