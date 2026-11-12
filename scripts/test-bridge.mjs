@@ -24,6 +24,7 @@ const ask = async (q) => { stdout.write(q); const { value } = await lines.next()
 const apiKey = await ask('Customer key (cb_live_...): ');
 const secret = await ask('Internal secret: ');
 const frontend = ((await ask(`Frontend address [${DEFAULT_FRONTEND}]: `)) || DEFAULT_FRONTEND).replace(/\/+$/, '');
+const payUser = await ask('End user ID with a stored card, for AgentCard checks (blank to skip the purchase checks): ');
 process.stdin.pause();
 
 if (!apiKey.startsWith('cb_live_') || !secret) {
@@ -135,6 +136,93 @@ await check('the frontend received the usage events', async () => {
   }
   throw new Error(`usage did not grow (still ${count}). Check CHUSKY_FRONTEND_URL and CHUSKY_INTERNAL_SECRET on the browser server.`);
 });
+
+// ----- AgentCard, through the bridge. Creates and cancels one approval request; no money moves. -----
+console.log('\nAgentCard checks (through the bridge)');
+const pay = new ChuskyClient({ apiKey, userId: payUser || `bridge-check-pay-${Date.now()}` });
+
+await check('merchant check answers', async () => {
+  await pay.merchants({ q: 'Shop Example', limit: 5 });
+  return 'answered';
+});
+
+await check('processor list answers', async () => {
+  await pay.processors();
+  return 'answered';
+});
+
+if (!payUser) {
+  console.log('SKIP purchase checks: no end user ID given. Run again with a user who has a stored card.');
+} else {
+  let cardCount = 0;
+
+  await check('enrolment answers (has_card, or a vault link)', async () => {
+    const r = await pay.enrolCard();
+    if (!r?.status) throw new Error('no status in the answer');
+    return r.status;
+  });
+
+  await check('the user has a stored card', async () => {
+    const c = await pay.listCards();
+    cardCount = (c?.cards ?? []).length;
+    if (cardCount === 0) throw new Error('no card on file for this user. Open the vault link, store a card, then run again.');
+    return `${cardCount} card(s)`;
+  });
+
+  await check('spending preset: set, read and delete', async () => {
+    await pay.setPreset('bridge-check', { perDayCents: 100, currencies: ['usd'] });
+    const p = await pay.getPreset('bridge-check');
+    if (!p) throw new Error('preset not returned after set');
+    await pay.deletePreset('bridge-check');
+    return 'ok';
+  });
+
+  let prep = null;
+  await check('prepare a purchase for approval (1 cent, not sent to the user)', async () => {
+    if (cardCount === 0) throw new Error('skipped: no card');
+    prep = await pay.preparePurchase({
+      merchant: 'Bridge Check Store',
+      amount: 1,
+      currency: 'usd',
+      psp: 'stripe',
+      merchantOrigin: 'https://example.com',
+    });
+    if (!prep?.purchaseId) throw new Error('no purchaseId returned');
+    if (typeof prep.approvalUrl !== 'string' || !prep.approvalUrl.startsWith('https://')) throw new Error('no approval link returned');
+    return `status ${prep.status}`;
+  });
+
+  await check('read the prepared purchase back', async () => {
+    if (!prep) throw new Error('skipped: no purchase');
+    const p = await pay.getPurchase(prep.purchaseId);
+    if (p?.purchaseId !== prep.purchaseId) throw new Error('purchase id does not match');
+    return `status ${p.status}`;
+  });
+
+  await check('cancel the prepared purchase', async () => {
+    if (!prep) throw new Error('skipped: no purchase');
+    const c = await pay.cancelPurchase(prep.purchaseId);
+    if (c?.status !== 'cancelled') throw new Error(`still ${c?.status} after cancel`);
+    return 'cancelled';
+  });
+
+  await check('purchase list includes it', async () => {
+    if (!prep) throw new Error('skipped: no purchase');
+    const list = await pay.listPurchases();
+    if (!(list?.purchases ?? []).some((p) => p.purchaseId === prep.purchaseId)) throw new Error('not in the list');
+    return 'found';
+  });
+
+  // Information only, not counted: shows what the SDK's createPurchase sends today.
+  try {
+    const made = await pay.createPurchase({ merchant: 'Bridge Check Store', amount: 1, currency: 'usd', checkoutOrigin: 'https://example.com' });
+    if (made?.purchaseId) await pay.cancelPurchase(made.purchaseId);
+    console.log('INFO createPurchase (current SDK fields): accepted, and cancelled again');
+  } catch (err) {
+    const why = err instanceof ChuskyError ? `HTTP ${err.status} ${err.message}` : err.message;
+    console.log(`INFO createPurchase (current SDK fields): not accepted, ${why}`);
+  }
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exitCode = failed ? 1 : 0;
