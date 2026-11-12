@@ -11,7 +11,7 @@
 // The browser address is the built-in one the SDK already uses.
 // Exits 0 only if every check passes. The key and secret are never printed.
 
-import readline from 'node:readline';
+import readline from 'node:readline/promises';
 import { createHash } from 'node:crypto';
 import { stdin, stdout } from 'node:process';
 import { ChuskyClient, ChuskyError } from '../skills/chuskybrowser-setup/scripts/chusky-client.mjs';
@@ -19,13 +19,18 @@ import { ChuskyClient, ChuskyError } from '../skills/chuskybrowser-setup/scripts
 const BROWSER_V1 = 'https://chuskybrowser-production.up.railway.app/v1';
 const DEFAULT_FRONTEND = 'https://chuskybrowser.lovable.app';
 
-const lines = readline.createInterface({ input: stdin, output: stdout, terminal: false })[Symbol.asyncIterator]();
-const ask = async (q) => { stdout.write(q); const { value } = await lines.next(); return (value ?? '').trim(); };
-const apiKey = await ask('Customer key (cb_live_...): ');
-const secret = await ask('Internal secret: ');
-const frontend = ((await ask(`Frontend address [${DEFAULT_FRONTEND}]: `)) || DEFAULT_FRONTEND).replace(/\/+$/, '');
-const payUser = await ask('End user ID with a stored card, for AgentCard checks (blank to skip the purchase checks): ');
-process.stdin.pause();
+// Each answer can come from an environment variable instead of a prompt. That is the
+// reliable route on Windows terminals, where typed answers can go missing.
+const rl = readline.createInterface({ input: stdin, output: stdout });
+const ask = async (question, envName) => {
+  if (envName && process.env[envName] !== undefined) return process.env[envName].trim();
+  return (await rl.question(question)).trim();
+};
+const apiKey = await ask('Customer key (cb_live_...): ', 'CHUSKY_TEST_KEY');
+const secret = await ask('Internal secret: ', 'CHUSKY_TEST_SECRET');
+const frontend = ((await ask(`Frontend address [${DEFAULT_FRONTEND}]: `, 'CHUSKY_TEST_FRONTEND')) || DEFAULT_FRONTEND).replace(/\/+$/, '');
+const payUser = await ask('End user ID with a stored card, for AgentCard checks (blank to skip the purchase checks): ', 'CHUSKY_TEST_PAY_USER');
+rl.close();
 
 if (!apiKey.startsWith('cb_live_') || !secret) {
   console.log('FAIL inputs: a cb_live_ key and the internal secret are both required');
