@@ -167,11 +167,25 @@ if (!payUser) {
 } else {
   let cardCount = 0;
 
+  let link = null;
   await check('enrolment answers (has_card, or a vault link)', async () => {
-    const r = await pay.enrolCard();
-    if (!r?.status) throw new Error('no status in the answer');
-    return r.status;
+    link = await pay.enrolCard();
+    if (!link?.status) throw new Error('no status in the answer');
+    return link.status;
   });
+
+  // A new link needs the card stored through it, then the session polled so the server records the link.
+  if (link?.status === 'link' && link.sessionId) {
+    console.log(`\n  store the test card here, with your passkey:\n  ${link.url}\n  waiting up to 10 minutes for the card to be linked...\n`);
+    const deadline = Date.now() + 10 * 60 * 1000;
+    let st = null;
+    while (Date.now() < deadline) {
+      st = await pay.enrolStatus(link.sessionId);
+      if (st?.status === 'linked' || st?.status === 'expired' || st?.status === 'conflict') break;
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    await check('card linked through the link', st?.status === 'linked', `status ${st?.status ?? 'unknown'}`);
+  }
 
   await check('the user has a stored card', async () => {
     const c = await pay.listCards();
