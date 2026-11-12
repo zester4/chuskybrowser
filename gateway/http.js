@@ -118,7 +118,7 @@ export function createGatewayApp({ store, chuskyUrl, masterKey, cookieKey = '', 
         const isJson = (upstream.headers.get('content-type') || '').includes('application/json');
         const data = isJson ? JSON.parse(buffer.toString('utf8') || 'null') : null;
         if (route.kind === 'open' && data?.tabId) {
-          await store.recordTab({ accountId: account.accountId, tabId: data.tabId, sessionKey: req.body?.sessionKey || 'default', url: req.body?.url || null, openedAt: at });
+          await store.recordTab({ accountId: account.accountId, endUserId: endUser, tabId: data.tabId, sessionKey: req.body?.sessionKey || 'default', url: req.body?.url || null, openedAt: at });
         }
         if (route.closes) await store.markTabClosed(account.accountId, route.tabId, at);
         if (route.kind === 'viewer-link' && data?.url) {
