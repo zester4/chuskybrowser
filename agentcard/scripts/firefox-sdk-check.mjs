@@ -169,8 +169,10 @@ if (checkout) {
     // A pass needs a successful answer from the processor (HTTP 2xx) and no decline from the SDK.
     const answered = result.match(/^answered (\d{3})$/);
     const okAnswer = answered && Number(answered[1]) >= 200 && Number(answered[1]) < 300;
-    check('page receives a successful answer after approval', Boolean(okAnswer && finalState !== 'declined'),
-      `page: ${result.trim() || 'no answer'}; sdk: ${finalState}`);
+    // Token issued is not a completed purchase. A held token waits for the merchant to bind it.
+    const held = finalState === 'awaiting_merchant';
+    check('Stripe token issued after approval', Boolean(okAnswer && finalState !== 'declined'),
+      `page: ${result.trim() || 'no answer'}; sdk: ${finalState}${held ? ' (token held, awaiting merchant bind; purchase not completed)' : ''}`);
   }
 }
 

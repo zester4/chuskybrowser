@@ -69,6 +69,16 @@ shopping it. The catalog without a user works.
 `user_not_connected` response for `GET /buy/merchants?external_user_id=...`, and ask whether vault users
 need the connections flow for `link_status`.
 
+## Firefox results (2026-11-13)
+
+- Firefox + AgentCard SDK (`attachToPlaywright`), Stripe test mode: the card request is paused, the approval
+  link is issued, the user approves on device, and the page gets Stripe's `200` token. The SDK then holds the
+  token as `awaiting_merchant` (`stripe_tokenization_unbound`): the token is not yet bound to a payment.
+- Not yet shown: binding the token to a payment, a `completed` purchase on shop.agentcard.sh, the approve-first
+  `prepare()` path on Firefox, Square (no sandbox application id), and production.
+- Next test: `agentcard/scripts/firefox-store-purchase.mjs`, the purchase on shop.agentcard.sh. Passes only on
+  `completed`.
+
 ## Security
 
 - The internal secret was pasted in chat. Rotate `CHUSKY_INTERNAL_SECRET` on Railway and on the
