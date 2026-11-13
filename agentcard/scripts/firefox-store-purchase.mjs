@@ -94,6 +94,11 @@ try {
 }
 
 const page = await (await browser.newContext()).newPage();
+const seen = [];
+page.on('request', (req) => {
+  const u = new URL(req.url());
+  if (/stripe|agentcard|square|braintree/i.test(u.host)) seen.push(`${req.method()} ${u.host}${u.pathname.slice(0, 60)}`);
+});
 const agentcard = new Agentcard({ clientId, clientSecret });
 let approvalUrl = null;
 let checkout;
@@ -129,14 +134,23 @@ if (checkout) {
   if (!(number && expiry && cvc)) await describePage(page);
 
   const pay = page.getByRole('button', { name: /pay|place order|submit|buy/i }).last();
+  const payText = await pay.textContent().catch(() => '(none)');
   const paid = await pay.click({ timeout: 15000 }).then(() => true).catch(() => false);
-  check('submit the purchase', paid);
+  check('submit the purchase', paid, `clicked "${(payText ?? '').trim()}"`);
+  await sleep(8000); // give the store time to send its card request
   if (!paid) await describePage(page);
 
   // Wait for the approval link, then for the user to approve it.
   const linkDeadline = Date.now() + 60_000;
   while (!approvalUrl && Date.now() < linkDeadline) await sleep(500);
   check('approval link issued', Boolean(approvalUrl));
+  if (!approvalUrl) {
+    console.log(`  page url: ${page.url().replace(/\?.*$/, '')}`);
+    console.log(`  payment-host requests seen after submit: ${seen.length ? seen.join(' | ') : 'none'}`);
+    const text = await page.evaluate(() => document.body?.innerText?.slice(0, 400) ?? '').catch(() => '');
+    console.log(`  visible text (first 400 chars): ${JSON.stringify(text.replace(/\s+/g, ' '))}`);
+    await describePage(page);
+  }
 
   if (approvalUrl) {
     console.log(`  waiting up to ${waitSeconds}s for your approval...`);
