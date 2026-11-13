@@ -76,8 +76,10 @@ need the connections flow for `link_status`.
   token as `awaiting_merchant` (`stripe_tokenization_unbound`): the token is not yet bound to a payment.
 - Not yet shown: binding the token to a payment, a `completed` purchase on shop.agentcard.sh, the approve-first
   `prepare()` path on Firefox, Square (no sandbox application id), and production.
-- Next test: `agentcard/scripts/firefox-store-purchase.mjs`, the purchase on shop.agentcard.sh. Passes only on
-  `completed`.
+- Purchase on shop.agentcard.sh (Stripe test mode, Firefox): COMPLETED. The approval, the store's paid
+  page, and `checkout.reconcile()` returning `completed` all passed (`firefox-store-purchase.mjs`).
+- Still open for production: live payments, approve-first `prepare()`, Square, the REST calls through the bridge,
+  usage retries, tab records after a redeploy.
 
 ## Security
 
