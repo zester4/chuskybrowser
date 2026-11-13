@@ -18,6 +18,20 @@ production; the browser repo's `public` remote holds the last pushed backend com
 - Payment on a checkout page in AgentCard's test environment, with the user's approval:
   8 of 8 (camoufox-pay-check.mjs). This ran directly, not through the bridge.
 
+## Approve-first gap (found 2026-11-13)
+
+- The bridge path (`service.js` `attachPayment` -> `attachInterception` in `agentcard/src/interception.js`)
+  refuses every processor marked `preparationRequired` (Braintree, Square, Worldpay, Bambora, Mercado Pago):
+  it aborts the card request with `preparation_required` and never pauses it. So the bridge cannot pay
+  those merchants yet.
+- The SDK already does the approve-first step: `checkout.prepare({ psp, environment })` on the
+  `attachToPlaywright` controller, before the first Pay, with the approval URL delivered through
+  `onApprovalUrl`. The later card request binds to that approval, with no second link.
+- Fix: move the bridge's payment path onto the SDK's `attachToPlaywright` (it already handles prepare
+  and bind), or call `prepare()` from our interception before the first card request. Then verify on a
+  Braintree or Square test merchant through the bridge, with the approval on a device.
+- Stripe (the demo store) does not need preparation, so the passing Firefox test does not cover this.
+
 ## Not yet verified (needed before production)
 
 1. **Paying after approval** on a live checkout, for a processor that approves on its own page,
