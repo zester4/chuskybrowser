@@ -43,6 +43,32 @@ production; the browser repo's `public` remote holds the last pushed backend com
 8. **Other AgentCard error paths** (timeouts, expired approvals, declines) are not tested.
 9. **Rate limits and abuse limits** on customer keys are not set.
 
+## Research: the two open failures (from AgentCard's docs)
+
+**Approve-first cancels because nothing is waiting for the approval.** The preparation docs say the
+approval is used by a live checkout: "Use controller.prepare() with the checkout SDK ... Call the API
+directly only if your integration handles request interception." They also say "The user must keep the
+same page open after approving" and that navigation, a changed checkout, or an early request stops the
+approval from being used. Once `ready`, the window is at most 30 seconds. Our check creates the
+preparation and never opens a checkout, so after approval there is nothing to continue, and AgentCard
+cancels it (`payment_status: not_started`). This matches "Checkout stopped." The missing piece is our
+bind step: while a preparation is `ready`, the page's card request must be intercepted and answered with
+an authorization bound to the preparation (`binding_hash`, `checkout_key`). We have not built that. The
+earlier pass was not reproducible and should not be trusted.
+
+**`user_not_connected` (merchant list with a user).** No AgentCard page defines this error. The closest
+documented error is for preparations: `not_found`, "The user is not connected to your app. Connect the
+user first." The connections docs describe a separate platform connection (`/api/v2/connect/start`,
+`verify`, `consent`) that gives each user an `access_token`. The card vault is not described there. Our
+app links users through the vault only, so the merchant lookup, which asks for a user's `link_status`,
+probably refuses them. This is an inference from the docs, not confirmed. The MCP tool documents
+`link_status` as "this user's link status for each" merchant, and says a merchant should be linked before
+shopping it. The catalog without a user works.
+
+**To settle with AgentCard:** send founders@agentcard.com (named in their docs) the exact
+`user_not_connected` response for `GET /buy/merchants?external_user_id=...`, and ask whether vault users
+need the connections flow for `link_status`.
+
 ## Security
 
 - The internal secret was pasted in chat. Rotate `CHUSKY_INTERNAL_SECRET` on Railway and on the
