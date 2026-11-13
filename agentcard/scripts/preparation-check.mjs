@@ -101,10 +101,13 @@ try {
 check('approval link returned', typeof prep.approvalUrl === 'string' && prep.approvalUrl.startsWith('https://'));
 if (prep.approvalUrl) console.log(`\n  approve on your device: ${prep.approvalUrl}\n  waiting up to ${waitSeconds}s for approval...\n`);
 
-// 3. wait for "ready" (or a terminal status)
+// 3. wait for "ready" (or a terminal status). Poll every 1.5 seconds, the most the API allows,
+// and record every status change, so a fast ready-then-cancelled sequence is still visible.
 const deadline = Date.now() + waitSeconds * 1000;
 let latest = prep;
 let becameReady = false;
+const timeline = [];
+let lastStatus = null;
 while (Date.now() < deadline) {
   try {
     latest = await api.getPreparation(prep.id);
@@ -112,10 +115,16 @@ while (Date.now() < deadline) {
     check('read the preparation', false, describeError(err));
     break;
   }
-  if (latest.status === 'ready') { becameReady = true; break; }
+  if (latest.status !== lastStatus) {
+    timeline.push(`${new Date().toISOString()}  ${latest.status}`);
+    lastStatus = latest.status;
+  }
+  // ready_expires_at is only set once the preparation has been approved, so it proves it was ready.
+  if (latest.status === 'ready' || latest.ready_expires_at) { becameReady = true; break; }
   if (['cancelled', 'expired', 'bound'].includes(latest.status)) break;
-  await sleep(5000);
+  await sleep(1500);
 }
+if (timeline.length) console.log(`\n  status timeline:\n${timeline.map((t) => `    ${t}`).join('\n')}`);
 check('approval makes the preparation ready', becameReady, `last status ${latest?.status ?? 'unknown'}`);
 if (!becameReady) printWhyStopped(prep, latest);
 if (becameReady) {
