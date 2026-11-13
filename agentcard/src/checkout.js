@@ -39,6 +39,7 @@ export const EVENT_STATUS = {
   amount_mismatch: 'declined',
   expired: 'expired',
   refused: 'refused',
+  cancelled: 'cancelled',
   settled: 'settled',
   settlement_unconfirmed: 'not_settled',
 };
@@ -261,7 +262,8 @@ export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX
       if (!p) return null; // not a purchase this app created
 
       const kind = event.type.replace(/^checkout_authorization\./, '');
-      if (kind === 'watched') {
+      // Recorded for the audit trail; the purchase's status does not change. A duplicate charge needs a person to look.
+      if (kind === 'watched' || kind === 'duplicate_charge' || kind === 'outcome_reported') {
         record(p, event.type);
         return summary(p);
       }

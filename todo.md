@@ -18,6 +18,23 @@ production; the browser repo's `public` remote holds the last pushed backend com
 - Payment on a checkout page in AgentCard's test environment, with the user's approval:
   8 of 8 (camoufox-pay-check.mjs). This ran directly, not through the bridge.
 
+## Audit against the AgentCard docs (2026-11-13)
+
+Done and tested: vault sessions (open, external_user_id, steps, expires_in), vault polling (pending, linked,
+expired), vault.session_linked and vault.card_stored webhooks, card listing, the checkout authorization
+create, approval, decline, expiry, refusal, settlement read-back, cancel, and the webhook signature and replay checks.
+Webhooks now also handle `checkout_authorization.cancelled` (status cancelled), and record
+`duplicate_charge` and `outcome_reported` without changing the status. 139 AgentCard tests pass.
+
+Not done (decide before real customers):
+- **Order confirmation on the bridge.** The docs say to read the merchant's order result before telling the
+  user it is done. The bridge reports the approval and the processor's answer, not the order. The SDK's
+  `resolveMerchantResult` does this on the Playwright path only.
+- **Duplicate charge alert.** The event is recorded, but nothing alerts a person yet.
+- **Cart details on the approval page.** `line_items`, `subtotal`, `shipping`, `tax` and `ship_to` are not sent.
+  The approval page then shows only the merchant and amount.
+- **Connected vault sessions** (a session that names an existing user_id) are not used.
+
 ## Approve-first on the bridge (built 2026-11-13, live test still needed)
 
 - The payment arm call takes an optional `psp`. With it, the server prepares the approval first, returns

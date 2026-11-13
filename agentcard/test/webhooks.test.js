@@ -97,6 +97,25 @@ describe('webhook receiver', () => {
       await new Promise((r) => server.close(r));
     }
   });
+
+  test('a cancelled authorization is marked cancelled; a duplicate charge is recorded and does not change the status', async () => {
+    const s = makeService();
+    const handler = s.service.webhooks();
+    const { sessionId } = await s.service.vault.start('wh-cancel');
+    s.fake.linkSession(sessionId, 'usr_wh_cancel');
+    s.advance(3000);
+    await s.service.vault.poll('wh-cancel', sessionId);
+    s.fake.addCard('usr_wh_cancel', { last4: '4242' });
+    const p = await s.service.checkout.request('wh-cancel', { merchant: 'Shop', amount: 500, currency: 'usd', psp: 'stripe', checkoutOrigin: 'https://shop.example.com', request: { url: 'https://api.stripe.com/v1/tokens', method: 'POST' } });
+
+    const c = signedDelivery({ id: 'evt_cancel_1', type: 'checkout_authorization.cancelled', data: { id: p.purchaseId } }, WEBHOOK_SECRET, s.nowSeconds());
+    assert.equal((await handler({ headers: c.headers, rawBody: c.body })).status, 200);
+    assert.equal(s.service.store.getPurchase(p.purchaseId).status, 'cancelled');
+
+    const d = signedDelivery({ id: 'evt_dupe_1', type: 'checkout_authorization.duplicate_charge', data: { id: p.purchaseId } }, WEBHOOK_SECRET, s.nowSeconds());
+    assert.equal((await handler({ headers: d.headers, rawBody: d.body })).status, 200);
+    assert.equal(s.service.store.getPurchase(p.purchaseId).status, 'cancelled', 'a duplicate charge does not change the status');
+  });
 });
 
 async function seedPurchase(s) {
