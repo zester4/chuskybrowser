@@ -127,9 +127,10 @@ if (checkout) {
   if (!bought) await describePage(page);
 
   // Card fields: Stripe's usual names and autocomplete values, in the page or in a frame.
-  const number = await fillField(page, ['input[autocomplete="cc-number"]', 'input[name="cardnumber"]', 'input[name="card_number"]', 'input[placeholder*="card number" i]'], '4242424242424242');
-  const expiry = await fillField(page, ['input[autocomplete="cc-exp"]', 'input[name="exp-date"]', 'input[name="exp_date"]', 'input[placeholder*="MM" i]'], '1230');
-  const cvc = await fillField(page, ['input[autocomplete="cc-csc"]', 'input[name="cvc"]', 'input[placeholder*="CVC" i]'], '123');
+  // The store's fields are identified by their placeholders: "4242 4242 4242 4242", "12/34" (MM/YY), "123".
+  const number = await fillField(page, ['input[placeholder="4242 4242 4242 4242"]'], '4242424242424242');
+  const expiry = await fillField(page, ['input[placeholder="12/34"]'], '12/30');
+  const cvc = await fillField(page, ['input[placeholder="123"]'], '123');
   check('card fields found and filled', number && expiry && cvc, `number ${number}, expiry ${expiry}, cvc ${cvc}`);
   if (!(number && expiry && cvc)) await describePage(page);
 
