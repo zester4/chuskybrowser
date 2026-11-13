@@ -153,7 +153,14 @@ export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX
         throw codeError('Purchase is above the configured limit', 'over_limit');
       }
 
-      const origin = httpsOrigin(input.checkoutOrigin);
+      // A prepared checkout binds this request to its approval (SDK: preparation_id, checkout_key,
+      // merchant_origin). Its processor must be the one the preparation was made for.
+      const prep = input.preparation ?? null;
+      if (prep && (typeof prep.id !== 'string' || typeof prep.checkoutKey !== 'string' || typeof prep.merchantOrigin !== 'string')) {
+        throw invalid('preparation needs id, checkoutKey and merchantOrigin');
+      }
+      if (prep && prep.psp !== input.psp) throw codeError('This approval was made for a different processor', 'preparation_mismatch');
+      const origin = prep ? null : httpsOrigin(input.checkoutOrigin);
 
       // Pay with the requested card, or with the default card on file.
       const { enrolled, cards } = await vault.listCards(userId);
@@ -169,7 +176,9 @@ export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX
         amount: input.amount,
         currency: input.currency,
         psp: input.psp,
-        checkout_origin: origin,
+        ...(prep
+          ? { preparation_id: prep.id, checkout_key: prep.checkoutKey, merchant_origin: prep.merchantOrigin, form_guidance: 'filled' }
+          : { checkout_origin: origin }),
         card_id: cardId,
         request: {
           url: req.url,

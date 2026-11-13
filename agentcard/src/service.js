@@ -182,11 +182,17 @@ export function createAgentCardService(options) {
         checkoutOrigin: purchase.checkoutOrigin,
         cardId: purchase.cardId,
         onApprovalUrl: purchase.onApprovalUrl,
+        preparation: purchase.preparation ?? null,
         timeoutMs: purchase.timeoutMs,
         log,
         now: options.now,
         sleep: options.sleep,
       });
+    },
+
+    /** Approve first: create the preparation and return its approval link. Pay only after it is ready. */
+    preparePayment(userId, input) {
+      return checkout.prepare(userId, input);
     },
 
     /** Flush durable state. Call on shutdown. */

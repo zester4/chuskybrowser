@@ -1155,7 +1155,8 @@ app.post('/agentcard/tabs/:tabId/payment', async (req, res) => {
   try {
     const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
     if (!userId) return res.status(400).json({ error: 'invalid_request', message: 'userId is required' });
-    const { merchant, amount, currency, checkoutOrigin, cardId } = req.body;
+    const { merchant, amount, currency, checkoutOrigin, cardId, psp } = req.body;
+    if (psp !== undefined && (typeof psp !== 'string' || !/^[a-z_]{2,40}$/.test(psp))) return res.status(400).json({ error: 'invalid_request', message: 'psp must be a processor name, e.g. braintree' });
     if (typeof merchant !== 'string' || !merchant.trim() || merchant.length > 120) return res.status(400).json({ error: 'invalid_request', message: 'merchant is required (max 120 characters)' });
     if (!Number.isInteger(amount) || amount <= 0) return res.status(400).json({ error: 'invalid_request', message: 'amount must be a positive integer in minor units' });
     if (typeof currency !== 'string' || !/^[a-z]{3}$/.test(currency)) return res.status(400).json({ error: 'invalid_request', message: 'currency must be a lowercase ISO code, e.g. usd' });
@@ -1179,6 +1180,21 @@ app.post('/agentcard/tabs/:tabId/payment', async (req, res) => {
 
     const attachmentId = agentcardRandomUUID();
     const record = { id: attachmentId, userId, tabId: req.params.tabId, approvalUrl: null, purchaseId: null, handle: null, createdAt: new Date().toISOString() };
+
+    // Approve first (a processor that needs it, such as Braintree or Square): create the preparation now,
+    // so the cardholder approves before Pay. The card request then binds to that approval. The checkout key
+    // stays on the server and is never returned.
+    let preparation = null;
+    if (psp) {
+      const checkoutKey = agentcardRandomUUID();
+      const prep = await agentcard.preparePayment(userId, {
+        merchant: merchant.trim(), amount, currency, psp, cardId, merchantOrigin: checkoutOrigin, checkoutKey,
+      });
+      preparation = { id: prep.purchaseId, checkoutKey, merchantOrigin: checkoutOrigin, psp };
+      record.approvalUrl = prep.approvalUrl;
+      record.purchaseId = prep.purchaseId;
+    }
+
     record.handle = await agentcard.attachPayment(found.tabState.page, {
       userId,
       merchant: merchant.trim(),
@@ -1186,10 +1202,11 @@ app.post('/agentcard/tabs/:tabId/payment', async (req, res) => {
       currency,
       checkoutOrigin,
       cardId,
+      preparation,
       onApprovalUrl: (url, purchaseId) => { record.approvalUrl = url; record.purchaseId = purchaseId; },
     });
     agentcardAttachments.set(attachmentId, record);
-    res.status(201).json({ attachmentId, tabId: record.tabId });
+    res.status(201).json({ attachmentId, tabId: record.tabId, ...(preparation ? { preparationId: preparation.id, approvalUrl: record.approvalUrl } : {}) });
   } catch (err) {
     sendAgentCardError(res, err, log);
   }

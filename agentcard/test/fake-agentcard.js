@@ -124,6 +124,14 @@ export function createFakeAgentCard({ webhookSecret = 'whsec_test', tokenLifetim
       if (body.checkout_origin && !/^https:\/\/[^/]+$/.test(body.checkout_origin)) {
         return json(400, { error: { code: 'invalid_request', message: 'checkout_origin must be an https origin' } });
       }
+      if (body.preparation_id) {
+        // A prepared checkout: the approval must be ready, for this key and origin, and it binds one request.
+        const prep = state.preparations.get(body.preparation_id);
+        if (!prep || prep.status !== 'ready' || prep.checkout_key !== body.checkout_key || prep.merchant_origin !== body.merchant_origin) {
+          return json(409, { error: { code: 'preparation_required', message: 'That approval is not ready for this request' } });
+        }
+        prep.status = 'bound';
+      }
       const id = `cauth_${++idSeq}`;
       const record = {
         id,

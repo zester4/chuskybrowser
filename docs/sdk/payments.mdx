@@ -38,10 +38,13 @@ POST /agentcard/tabs/{tabId}/payment
 | `currency` | A lowercase three-letter code, such as `usd`. |
 | `checkoutOrigin` | The address of the checkout page, starting with `https://`. |
 | `cardId` | Optional. Which stored card to use. If you leave it out, the first card is used. |
+| `psp` | Optional. The store's processor, such as `braintree`, `square`, `worldpay`, `bambora` or `mercado_pago`. Send it for a store that needs approval before Pay. Leave it out for Stripe and most other stores. |
 
 The response includes an `attachmentId`. Keep it for the next steps.
 
 Once armed, the checkout's card request waits for the user's approval instead of going through.
+
+**Approve before Pay.** When you send `psp`, the response also includes `approvalUrl` and `preparationId`. Send the user the link straight away. Wait until the user has approved (step 2 shows `ready`), then have the agent press Pay. The card request then binds to that approval, and the user is not asked a second time.
 
 ## 2. Send the user the approval link
 

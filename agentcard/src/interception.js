@@ -86,7 +86,7 @@ export function corsHeaders(origin) {
 export async function attachInterception(page, options) {
   const {
     checkout, api, registry, userId, merchant, amount, currency,
-    checkoutOrigin, cardId, onApprovalUrl,
+    checkoutOrigin, cardId, onApprovalUrl, preparation = null,
     log = () => {}, now = () => Date.now(),
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -111,11 +111,17 @@ export async function attachInterception(page, options) {
       currency,
       psp: rec.psp,
       cardId,
-      checkoutOrigin,
+      checkoutOrigin: preparation && rec.preparationRequired ? undefined : checkoutOrigin,
+      preparation: rec.preparationRequired ? preparation : undefined,
       request: { url: req.url(), method: req.method(), headers: req.headers(), body: req.postData() ?? '' },
     });
-    if (!purchase.approvalUrl) throw Object.assign(new Error('AgentCard returned no approval link'), { code: 'no_approval_link' });
-    onApprovalUrl(purchase.approvalUrl, purchase.purchaseId);
+    // A bound request (a preparation) gets no second approval link: the approval already happened.
+    if (preparation && rec.preparationRequired) {
+      log('info', 'agentcard: paused card request bound to its approved preparation', { purchaseId: purchase.purchaseId, psp: rec.psp });
+    } else {
+      if (!purchase.approvalUrl) throw Object.assign(new Error('AgentCard returned no approval link'), { code: 'no_approval_link' });
+      onApprovalUrl(purchase.approvalUrl, purchase.purchaseId);
+    }
     log('info', 'agentcard: paused card request, awaiting approval', { purchaseId: purchase.purchaseId, psp: rec.psp });
 
     const deadline = now() + timeoutMs;
@@ -156,6 +162,16 @@ export async function attachInterception(page, options) {
     }
   }
 
+  /** For a preparation-required processor: true only when its approval is ready for this processor. */
+  async function preparationReady(rec) {
+    if (!preparation) return 'preparation_required';
+    if (preparation.psp !== rec.psp) return 'preparation_mismatch';
+    const prep = await api.getPreparation(preparation.id).catch(() => null);
+    if (!prep) return 'preparation_unavailable';
+    if (prep.status === 'ready') return true;
+    return prep.status === 'bound' ? 'preparation_spent' : 'preparation_not_ready';
+  }
+
   async function handle(route) {
     const req = route.request();
     const rec = findRecognizer(req.url(), registry);
@@ -163,9 +179,12 @@ export async function attachInterception(page, options) {
       return route.continue();
     }
     if (rec.preparationRequired === true) {
-      results.push({ status: 'refused', reason: 'preparation_required', psp: rec.psp, at: new Date(now()).toISOString() });
-      log('warn', 'agentcard: processor needs a prepared checkout; not paused on this path', { psp: rec.psp });
-      return route.abort('failed');
+      const ready = await preparationReady(rec);
+      if (ready !== true) {
+        results.push({ status: 'refused', reason: ready, psp: rec.psp, at: new Date(now()).toISOString() });
+        log('warn', 'agentcard: processor needs an approved preparation; card request not paused', { psp: rec.psp, reason: ready });
+        return route.abort('failed');
+      }
     }
     if (phase !== 'idle') {
       results.push({ status: 'refused', reason: 'duplicate_blocked', psp: rec.psp, at: new Date(now()).toISOString() });

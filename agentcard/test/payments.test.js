@@ -307,3 +307,47 @@ describe('paying on any site (interception)', () => {
     assert.ok(reg[0].match instanceof RegExp);
   });
 });
+
+describe('approve before pay: the card request binds to the approval', () => {
+  const BRAINTREE_REQUEST = { url: 'https://payments.braintree-api.com/graphql', method: 'POST', headers: {}, body: '{}' };
+
+  test('a ready approval binds one card request, and cannot bind a second', async () => {
+    const s = makeService();
+    await enrol(s, 'bind-a');
+    const checkoutKey = 'bind-key-0000000001';
+    const prep = await s.service.checkout.prepare('bind-a', { merchant: 'Shop', amount: 2306, currency: 'usd', psp: 'braintree', merchantOrigin: SHOP, checkoutKey });
+    s.fake.setPreparation(prep.purchaseId, { status: 'ready' });
+    const input = {
+      merchant: 'Shop', amount: 2306, currency: 'usd', psp: 'braintree', request: BRAINTREE_REQUEST,
+      preparation: { id: prep.purchaseId, checkoutKey, merchantOrigin: SHOP, psp: 'braintree' },
+    };
+    const first = await s.service.checkout.request('bind-a', input);
+    assert.equal(first.status, 'awaiting_approval');
+    await assert.rejects(s.service.checkout.request('bind-a', input));
+  });
+
+  test('a card request is refused while the approval is still waiting for the user', async () => {
+    const s = makeService();
+    await enrol(s, 'bind-b');
+    const checkoutKey = 'bind-key-0000000002';
+    const prep = await s.service.checkout.prepare('bind-b', { merchant: 'Shop', amount: 500, currency: 'usd', psp: 'braintree', merchantOrigin: SHOP, checkoutKey });
+    const input = {
+      merchant: 'Shop', amount: 500, currency: 'usd', psp: 'braintree', request: BRAINTREE_REQUEST,
+      preparation: { id: prep.purchaseId, checkoutKey, merchantOrigin: SHOP, psp: 'braintree' },
+    };
+    await assert.rejects(s.service.checkout.request('bind-b', input));
+  });
+
+  test('an approval made for one processor cannot bind a request to another', async () => {
+    const s = makeService();
+    await enrol(s, 'bind-c');
+    const checkoutKey = 'bind-key-0000000003';
+    const prep = await s.service.checkout.prepare('bind-c', { merchant: 'Shop', amount: 500, currency: 'usd', psp: 'braintree', merchantOrigin: SHOP, checkoutKey });
+    s.fake.setPreparation(prep.purchaseId, { status: 'ready' });
+    const input = {
+      merchant: 'Shop', amount: 500, currency: 'usd', psp: 'square', request: BRAINTREE_REQUEST,
+      preparation: { id: prep.purchaseId, checkoutKey, merchantOrigin: SHOP, psp: 'braintree' },
+    };
+    await assert.rejects(s.service.checkout.request('bind-c', input), (e) => e.code === 'preparation_mismatch');
+  });
+});
