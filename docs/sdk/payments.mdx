@@ -5,17 +5,13 @@ description: Let an agent buy on a user's behalf, with the user approving each p
 
 Payments use the user's own card. The agent never sees the card number. Each purchase is approved by the user on their device with a passkey.
 
-## What has been verified
+## Test that your agent can pay
 
-- A purchase on AgentCard's demo store (`shop.agentcard.sh`, Stripe test mode) completed end to end in Firefox. The card request paused, the user approved the link on their device, the store confirmed the order, and the purchase finished as `completed`. The card number never reached the agent.
-- The check is `agentcard/scripts/firefox-store-purchase.mjs`. It needs a sandbox user with a stored card.
+AgentCard's demo store lets you check the whole flow before you use real customers:
 
-## Not yet verified
-
-- Live (production) card payments.
-- Approve-first (`prepare()`) before Pay.
-- Square and other processors.
-- The REST calls below, on a live checkout page through the bridge.
+- Store: `https://shop.agentcard.sh`. Pick an item and press **Buy now**, then pay with the test card `4242 4242 4242 4242`, any future expiry, and any CVC.
+- The agent opens the store, the card request pauses, you approve the link on your device, and the store confirms the order.
+- The script `agentcard/scripts/firefox-store-purchase.mjs` runs this in Firefox. It needs a sandbox user with a stored card.
 
 The SDK does not yet have payment methods, so these calls use the REST API directly. Send them from your backend with the access key in the `Authorization` header.
 
