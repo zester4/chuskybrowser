@@ -35,6 +35,9 @@ const user = flag('--user', null);
 const psp = flag('--psp', 'stripe'); // stripe: the route the Camoufox payment check passes on; square needs a Square sandbox app id
 const waitSeconds = Number(flag('--wait', '0'));
 const SQUARE_CARD_URL = 'https://pci-connect.squareupsandbox.com/v2/card-nonce';
+// Stripe's publishable key (public, not a secret). The same value the Camoufox payment check reads.
+const PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY?.trim() ?? '';
+const keyLooksValid = /^pk_(test|live)_[A-Za-z0-9]+$/.test(PUBLISHABLE_KEY);
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -63,13 +66,14 @@ if (!clientId || !clientSecret || !user || !Agentcard) {
 // Each processor's page posts a card request to that processor's own endpoint. The SDK pauses it there.
 const CHECKOUTS = {
   // Stripe test mode: the route Stripe's quickstart and our Camoufox payment check use.
-  stripe: `const body = new URLSearchParams({ 'card[number]': '4242424242424242', 'card[exp_month]': '12', 'card[exp_year]': '2030', 'card[cvc]': '123' });
+  stripe: `const body = new URLSearchParams({ ${keyLooksValid ? `key: '${PUBLISHABLE_KEY}', ` : ''}'card[number]': '4242424242424242', 'card[exp_month]': '12', 'card[exp_year]': '2030', 'card[cvc]': '123' });
     const res = await fetch('https://api.stripe.com/v1/tokens', { method: 'POST', body });`,
   // Square sandbox. Needs a real Square sandbox application id; a placeholder is refused with 401.
   square: `const res = await fetch('${SQUARE_CARD_URL}', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
       client_id: 'sandbox-check', session_id: 'sandbox-check-session', location_id: 'sandbox-check-location', idempotency_key: crypto.randomUUID(),
       card_data: { number: '4111111111111111', exp_month: 12, exp_year: 2030, cvv: '111', billing_postal_code: '94103' } }) });`,
 };
+if (psp === 'stripe') check('STRIPE_PUBLISHABLE_KEY is set in .env (value not shown)', keyLooksValid, keyLooksValid ? 'pk_ key present' : 'add STRIPE_PUBLISHABLE_KEY=pk_test_... to .env');
 if (!CHECKOUTS[psp]) { check('processor is stripe or square', false, psp); console.log('\n1 failed'); process.exit(1); }
 
 // A page with one button. Pressing it sends the processor's card request.
