@@ -44,6 +44,21 @@ function describeError(err) {
   }
   return err.message;
 }
+
+// Print what AgentCard reports about a preparation that did not become ready, without secrets.
+const SECRET_KEY = /secret|token|password|card_number|pan|cvv|authorization|key/i;
+function printWhyStopped(created, latest) {
+  const elapsed = latest?.updated_at && created?.created_at
+    ? `${Math.round((Date.parse(latest.updated_at) - Date.parse(created.created_at)) / 1000)}s after creation`
+    : 'time not reported';
+  console.log(`\n  why it stopped (${elapsed}):`);
+  for (const [key, value] of Object.entries(latest ?? {})) {
+    if (key === 'approvalUrl' || SECRET_KEY.test(key)) continue;
+    const shown = typeof value === 'object' && value !== null ? JSON.stringify(value).slice(0, 300) : String(value);
+    console.log(`    ${key}: ${shown}`);
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const clientId = process.env.AGENTCARD_CLIENT_ID?.trim();
@@ -102,6 +117,7 @@ while (Date.now() < deadline) {
   await sleep(5000);
 }
 check('approval makes the preparation ready', becameReady, `last status ${latest?.status ?? 'unknown'}`);
+if (!becameReady) printWhyStopped(prep, latest);
 if (becameReady) {
   check('ready window is reported', Boolean(latest.ready_expires_at), latest.ready_expires_at ? 'ready_expires_at present' : 'missing');
 }

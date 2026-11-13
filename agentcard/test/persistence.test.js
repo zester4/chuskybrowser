@@ -26,7 +26,8 @@ describe('durable state', () => {
     assert.equal(reloaded.getSession(sessionId).status, 'linked');
   });
 
-  test('the state file is private (0600) and holds no card data or secrets', async () => {
+  // POSIX permission bits are not enforced on Windows (Node reports 0666), so skip only the mode check there.
+  test('the state file is private (0600) and holds no card data or secrets', { skip: process.platform === 'win32' && 'file modes are not enforced on Windows' }, async () => {
     const file = join(dir, 'perm', 'state.json');
     const s = makeService({ stateFile: file });
     const { sessionId } = await s.service.vault.start('perm-user');
@@ -35,7 +36,7 @@ describe('durable state', () => {
     await s.service.vault.poll('perm-user', sessionId);
     s.service.store.flush();
 
-    assert.equal(statSync(file).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
     const text = readFileSync(file, 'utf8');
     assert.ok(text.includes('usr_perm'));
     assert.ok(!text.includes('sec_test'), 'client secret must never be written');
