@@ -69,7 +69,13 @@ document.getElementById('pay').onclick = async () => {
     const res = await fetch('${SQUARE_CARD_URL}', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ card_data: { number: '4111111111111111' } }),
+      body: JSON.stringify({
+        client_id: 'sandbox-check',
+        session_id: 'sandbox-check-session',
+        location_id: 'sandbox-check-location',
+        idempotency_key: crypto.randomUUID(),
+        card_data: { number: '4111111111111111', exp_month: 12, exp_year: 2030, cvv: '111', billing_postal_code: '94103' },
+      }),
     });
     document.getElementById('result').textContent = 'answered ' + res.status;
   } catch (err) {
