@@ -3844,7 +3844,7 @@ app.get('/health', (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-app.get('/metrics', async (_req, res) => {
+app.get('/metrics', authMiddleware(), async (_req, res) => {
   const reg = getRegister();
   if (!reg) {
     res.status(404).json({ error: 'Prometheus metrics disabled. Set PROMETHEUS_ENABLED=1 to enable.' });
