@@ -11,8 +11,10 @@ production; the browser repo's `public` remote holds the last pushed backend com
 - AgentCard through the bridge: merchants, processors, card stored, presets set/read/delete,
   prepare, read back, cancel, purchase list. The vault mapping survived one Railway redeploy
   after the volume was added.
-- Approve-first in AgentCard's test environment, with Square: a preparation reaches `ready`
-  after the user approves on their device, and cancels cleanly (preparation-check.mjs).
+- Approve-first in AgentCard's test environment: a preparation reaches `ready` after the user
+  approves on their device, and cancels cleanly (preparation-check.mjs).
+- AgentCard webhook: registered with AgentCard for `https://chuskybrowser-production.up.railway.app/agentcard/webhooks`,
+  with the signing secret set on Railway. A test event was delivered and accepted (HTTP 200), 2026-11-13.
 - Payment on a checkout page in AgentCard's test environment, with the user's approval:
   8 of 8 (camoufox-pay-check.mjs). This ran directly, not through the bridge.
 
@@ -24,9 +26,9 @@ production; the browser repo's `public` remote holds the last pushed backend com
    Needs production AgentCard credentials and the switch, tested once with a small real payment.
 3. **Vault link for real customers.** The mapping from a user to their AgentCard user is saved only
    when the enrolment session is polled (`enrolStatus`). The test polls; a real customer's app
-   does not yet. Decide: poll automatically on the customer's behalf, or use the AgentCard
-   webhook. The webhook route exists (`/agentcard/webhooks`), but registering it with AgentCard
-   (`POST /webhook_endpoints`) is not confirmed.
+   does not yet. The AgentCard webhook is now live (see Verified), so handle `vault.session_linked`
+   from it as the source of truth. Polling stays as a fallback. Still to confirm: a real
+   `vault.session_linked` event links the user, and this is covered by the webhook tests only.
 4. **Usage tracking is best-effort.** Each usage, tab-open and tab-close event is sent to the
    frontend once, with a 5-second timeout. A failed event is logged and never retried, so
    counts can be too low when the frontend is slow or down. Before billing on these counts:
