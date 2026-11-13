@@ -144,11 +144,17 @@ if (checkout) {
     const end = Date.now() + waitSeconds * 1000;
     let result = '';
     while (Date.now() < end) {
-      result = await page.textContent('#result');
-      if (/answered|failed/.test(result)) break;
+      result = (await page.textContent('#result')) ?? '';
+      if (/^(answered|failed)/.test(result)) break;
       await sleep(1000);
     }
-    check('page receives an answer after approval', /answered|failed/.test(result), result.trim());
+    const finalState = states.at(-1) ?? 'none';
+    console.log(`  final sdk state: ${finalState}`);
+    // A pass needs a successful answer from the processor (HTTP 2xx) and no decline from the SDK.
+    const answered = result.match(/^answered (\d{3})$/);
+    const okAnswer = answered && Number(answered[1]) >= 200 && Number(answered[1]) < 300;
+    check('page receives a successful answer after approval', Boolean(okAnswer && finalState !== 'declined'),
+      `page: ${result.trim() || 'no answer'}; sdk: ${finalState}`);
   }
 }
 
