@@ -265,6 +265,9 @@ export function createFakeAgentCard({ webhookSecret = 'whsec_test', tokenLifetim
       const kind = url.searchParams.get('kind');
       const externalUserId = url.searchParams.get('external_user_id');
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 100);
+      if (externalUserId === 'user-unconnected') {
+        return json(403, { error: { code: 'user_not_connected', message: 'This user is not connected to your app.' } });
+      }
       let rows = MERCHANTS.filter((m) => (!q || m.name.toLowerCase().includes(q) || m.domain?.includes(q))
         && (!kind || m.kind === kind));
       rows = rows.slice(0, limit).map((m) => {

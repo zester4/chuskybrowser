@@ -154,11 +154,27 @@ export function createCommerce({ sdk: injected, ensureConfigured, config, fetchI
         if (!Number.isInteger(lim) || lim < 1 || lim > 100) throw codeError('limit must be a whole number from 1 to 100');
       }
       if (cursor !== undefined && (typeof cursor !== 'string' || cursor.length > 500)) throw codeError('cursor is invalid');
-      const raw = await api.listMerchants({ kind, q, limit: lim, cursor, externalUserId: userId });
+      let raw;
+      let userConnected = Boolean(userId);
+      try {
+        raw = await api.listMerchants({ kind, q, limit: lim, cursor, externalUserId: userId });
+      } catch (err) {
+        const notConnected = err instanceof AgentCardError
+          && (err.code === 'user_not_connected' || /user_not_connected/.test(err.message));
+        if (!userId || !notConnected) throw err;
+        // AgentCard says this user has no connection to the app. The catalog still works, so return
+        // it without link_status, and say so in the answer. This is not a silent fallback.
+        raw = await api.listMerchants({ kind, q, limit: lim, cursor });
+        userConnected = false;
+      }
       return {
         merchants: Array.isArray(raw?.merchants) ? raw.merchants : [],
         next_cursor: raw?.next_cursor ?? null,
         counts: raw?.counts ?? null,
+        user_connected: userConnected,
+        ...(userConnected ? {} : {
+          link_note: 'This user is not connected to the app, so no merchant link_status is included. Connect the user before shopping at merchants that need a link.',
+        }),
       };
     },
 

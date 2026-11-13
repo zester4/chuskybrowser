@@ -187,6 +187,22 @@ describe('merchant check (GET /buy/merchants, through the documented-shape fake)
     assert.ok(anon.merchants.every((m) => !('link_status' in m)));
   });
 
+  test('an unconnected user gets the catalog, marked as not connected, instead of a failed lookup', async () => {
+    const s = makeService();
+    const out = await s.service.commerce.merchants({ userId: 'user-unconnected' });
+    assert.equal(out.user_connected, false);
+    assert.ok(out.link_note.includes('not connected'));
+    assert.ok(out.merchants.length > 0);
+    assert.ok(out.merchants.every((m) => !('link_status' in m)));
+  });
+
+  test('a connected user is marked connected and gets no link note', async () => {
+    const s = makeService();
+    const out = await s.service.commerce.merchants({ userId: 'user-linked' });
+    assert.equal(out.user_connected, true);
+    assert.equal(out.link_note, undefined);
+  });
+
   test('kind and q filter the list; limit and cursor are passed on', async () => {
     const s = makeService();
     const catalog = await s.service.commerce.merchants({ kind: 'catalog' });

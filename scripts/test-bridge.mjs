@@ -153,8 +153,8 @@ console.log('\nAgentCard checks (through the bridge)');
 const pay = new ChuskyClient({ apiKey, userId: payUser || `bridge-check-pay-${Date.now()}` });
 
 await check('merchant check answers', async () => {
-  await pay.merchants({ q: 'Shop Example', limit: 5 });
-  return 'answered';
+  const r = await pay.merchants({ q: 'Shop Example', limit: 5 });
+  return `answered, user_connected=${r?.user_connected ?? 'not reported'}`;
 });
 
 await check('processor list answers', async () => {
