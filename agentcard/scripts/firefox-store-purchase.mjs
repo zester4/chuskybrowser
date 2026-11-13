@@ -154,9 +154,10 @@ if (checkout) {
   }
 
   if (approvalUrl) {
-    console.log(`  waiting up to ${waitSeconds}s for your approval...`);
+    console.log(`  waiting up to ${waitSeconds}s for your approval and the store's answer...`);
     const end = Date.now() + waitSeconds * 1000;
     let result = null;
+    let lastText = '';
     while (Date.now() < end) {
       try {
         result = await checkout.reconcile();
@@ -164,7 +165,16 @@ if (checkout) {
       } catch (err) {
         result = { status: 'error', reason: err.message };
       }
+      // Show what the store page says while we wait, so a stall is visible (no card data is printed).
+      const text = (await page.evaluate(() => document.body?.innerText ?? '').catch(() => '')).replace(/\s+/g, ' ').trim();
+      if (text !== lastText) {
+        console.log(`  page now: ${JSON.stringify(text.slice(0, 240))}`);
+        lastText = text;
+      }
       await sleep(3000);
+    }
+    if (result?.status !== 'completed') {
+      console.log(`  stopped waiting: the purchase is not completed. Last SDK status: ${result?.status ?? 'none'}${result?.reason ? ` (${result.reason})` : ''}`);
     }
     for (const k of ['status', 'reason', 'orderId', 'authorizationId', 'chargedKind', 'amountAuthority']) {
       if (result?.[k] !== undefined) console.log(`    ${k}: ${result[k]}`);
