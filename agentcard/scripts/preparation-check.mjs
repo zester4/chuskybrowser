@@ -119,8 +119,8 @@ while (Date.now() < deadline) {
     timeline.push(`${new Date().toISOString()}  ${latest.status}`);
     lastStatus = latest.status;
   }
-  // ready_expires_at is only set once the preparation has been approved, so it proves it was ready.
-  if (latest.status === 'ready' || latest.ready_expires_at) { becameReady = true; break; }
+  // Only a real "ready" status passes. ready_expires_at can also appear on a cancelled preparation, so it is not proof.
+  if (latest.status === 'ready') { becameReady = true; break; }
   if (['cancelled', 'expired', 'bound'].includes(latest.status)) break;
   await sleep(1500);
 }
