@@ -127,8 +127,9 @@ try {
       console.log(`\n  approve on your device: ${u}\n`);
     },
     onStateChange: (state) => {
-      states.push(state.status ?? JSON.stringify(state).slice(0, 120));
-      console.log(`  sdk state: ${states.at(-1)}`);
+      const line = `${state.status ?? 'unknown'}${state.reason ? ` (reason: ${state.reason})` : ''}`;
+      states.push(state.status ?? 'unknown');
+      console.log(`  sdk state: ${line}`);
     },
   });
   check('SDK attaches to the Firefox page', true);
@@ -153,6 +154,14 @@ if (checkout) {
     }
     const finalState = states.at(-1) ?? 'none';
     console.log(`  final sdk state: ${finalState}`);
+    // Ask the SDK for its own account of the checkout. Printed without any card data.
+    try {
+      const reconciled = await checkout.reconcile();
+      const keep = ['status', 'reason', 'authorizationId', 'chargedKind', 'amountAuthority'];
+      for (const k of keep) if (reconciled?.[k] !== undefined) console.log(`    ${k}: ${reconciled[k]}`);
+    } catch (err) {
+      console.log(`    reconcile() failed: ${err.message}`);
+    }
     // A pass needs a successful answer from the processor (HTTP 2xx) and no decline from the SDK.
     const answered = result.match(/^answered (\d{3})$/);
     const okAnswer = answered && Number(answered[1]) >= 200 && Number(answered[1]) < 300;
