@@ -59,6 +59,10 @@ if (!/^https:\/\//.test(store) || !/^[a-z_]{2,40}$/.test(psp) || !Number.isInteg
   console.log('--store must be an https address, --psp a processor name, --amount a whole number in minor units');
   process.exit(2);
 }
+if (psp === 'stripe') {
+  console.log('Stripe does not need approve-before-Pay. For shop.agentcard.sh (Stripe), run agentcard/scripts/firefox-store-purchase.mjs.');
+  process.exit(2);
+}
 const storeOrigin = new URL(store).origin;
 
 const clientId = process.env.AGENTCARD_CLIENT_ID?.trim();
