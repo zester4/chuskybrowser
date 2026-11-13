@@ -108,6 +108,14 @@ try {
     merchant: 'shop.agentcard.sh',
     amount: ITEM_CENTS,
     currency: 'usd',
+    // The store's page is the merchant's answer. Confirm only when it shows this order paid, for this amount and card.
+    requireMerchantResult: true,
+    resolveMerchantResult: async (state) => {
+      const text = (await page.evaluate(() => document.body?.innerText ?? '').catch(() => '')).replace(/\s+/g, ' ');
+      const paid = /Order paid/.test(text) && /\$5\.83/.test(text) && /card ending 4242/.test(text);
+      if (!paid || !state.authorizationId) return { status: 'pending' };
+      return { status: 'completed', confirmation: { kind: 'merchant_payment', authorizationId: state.authorizationId } };
+    },
     onApprovalUrl: (u) => {
       approvalUrl = u;
       console.log(`\n  approve on your device: ${u}\n`);
