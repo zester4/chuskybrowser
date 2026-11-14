@@ -26,6 +26,10 @@ const proc = spawn(process.execPath, [SERVER], {
     PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER,
     NODE_OPTIONS: process.env.NODE_OPTIONS || "",
     CHUSKY_BASE_URL: process.env.CHUSKY_BASE_URL || "http://localhost:9377",
+    // Forward the key and user id the MCP server reads, so calls run as that user
+    // and can reach the same server. Without these the server gets a random user.
+    CHUSKY_ACCESS_KEY: process.env.CHUSKY_ACCESS_KEY || "",
+    CHUSKY_USER_ID: process.env.CHUSKY_USER_ID || "",
   },
   stdio: ["pipe", "pipe", "pipe"],
 });
