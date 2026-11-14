@@ -11,6 +11,7 @@ import { hasGoogleOrganicResults } from './lib/google-serp.js';
 import { loadConfig } from './lib/config.js';
 import { createAgentCardService } from './agentcard/src/index.js';
 import { createUsageReporter } from './lib/usage-events.js';
+import { createVault, parseMasterKey } from './lib/vault.js';
 import { sendAgentCardError } from './agentcard/src/http.js';
 import { randomUUID as agentcardRandomUUID } from 'node:crypto';
 import { contextIdentityOptions, launchLocale } from './lib/browser-identity.js';
@@ -157,6 +158,23 @@ const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: 
 // Tab close times, sent to the frontend so minutes are recorded exactly. Retried; never blocks a request.
 const usageReporter = createUsageReporter({ frontendUrl: process.env.CHUSKY_FRONTEND_URL, secret: process.env.CHUSKY_INTERNAL_SECRET, queueFile: process.env.CHUSKY_USAGE_QUEUE_FILE || null, log });
 usageReporter.resume(); // send anything saved before a restart
+
+// Login vault. Off until both CHUSKY_VAULT_KEY (32 random bytes, base64) and CHUSKY_VAULT_FILE are set.
+let vault = null;
+let vaultError = null;
+if (process.env.CHUSKY_VAULT_KEY && process.env.CHUSKY_VAULT_FILE) {
+  try {
+    vault = createVault({ masterKey: parseMasterKey(process.env.CHUSKY_VAULT_KEY), filePath: process.env.CHUSKY_VAULT_FILE });
+  } catch (err) {
+    vaultError = err.message;
+    log('error', 'login vault not started', { error: err.message });
+  }
+}
+const vaultReady = (res) => {
+  if (vault) return true;
+  res.status(503).json({ error: 'vault_not_configured', detail: vaultError || 'Set CHUSKY_VAULT_KEY and CHUSKY_VAULT_FILE on the server.' });
+  return false;
+};
 
 /**
  * @openapi
@@ -5790,6 +5808,74 @@ app.post('/tabs/:tabId/upload', async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+// Login vault routes. Passwords go in once and are never returned.
+app.post('/vault/logins', express.json({ limit: '16kb' }), (req, res) => {
+  if (!vaultReady(res)) return;
+  const { userId, site, username, password, label } = req.body || {};
+  if (!userId) return res.status(400).json({ error: 'userId required' });
+  try {
+    const saved = vault.save(normalizeUserId(userId), { site, username: username ?? '', password, label });
+    res.status(201).json(saved);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/vault/logins', (req, res) => {
+  if (!vaultReady(res)) return;
+  const userId = req.query.userId;
+  if (!userId) return res.status(400).json({ error: 'userId required' });
+  res.json({ logins: vault.list(normalizeUserId(userId)) });
+});
+
+app.delete('/vault/logins/:loginId', (req, res) => {
+  if (!vaultReady(res)) return;
+  const userId = req.query.userId;
+  if (!userId) return res.status(400).json({ error: 'userId required' });
+  const removed = vault.remove(normalizeUserId(userId), req.params.loginId);
+  if (!removed) return res.status(404).json({ error: 'login_not_found' });
+  res.json({ ok: true });
+});
+
+// Fill a saved login into the tab's login form. The tab must be on the same origin the login was saved for.
+// The password goes from the vault to the page and is not returned, logged or stored anywhere else.
+app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, res) => {
+  if (!vaultReady(res)) return;
+  const blocked = agentActionBlock(req.params.tabId);
+  if (blocked) return res.status(409).json(blocked);
+  const tabId = req.params.tabId;
+  const { userId, loginId, submit = false } = req.body || {};
+  if (!userId || !loginId) return res.status(400).json({ error: 'userId and loginId required' });
+  const session = sessions.get(normalizeUserId(userId));
+  const found = session && findTab(session, tabId);
+  if (!found) return tabNotFoundResponse(res, tabId);
+  session.lastAccess = Date.now();
+  const { tabState } = found;
+  try {
+    const pageOrigin = new URL(tabState.page.url()).origin;
+    const creds = vault.credentialsFor(normalizeUserId(userId), loginId, pageOrigin);
+    if (!creds) return res.status(404).json({ error: 'login_not_for_this_site', detail: 'No saved login for this user matches the current page.' });
+    const filled = [];
+    await withTabLock(tabId, async () => {
+      const password = tabState.page.locator('input[type="password"]:visible').first();
+      if ((await password.count()) === 0) throw Object.assign(new Error('no password field on this page'), { status: 422 });
+      const username = tabState.page.locator('input[autocomplete="username"]:visible, input[type="email"]:visible, input[name*="user" i]:visible, input[name*="email" i]:visible, input[type="text"]:visible').first();
+      if (creds.username && (await username.count()) > 0) {
+        await username.fill(creds.username, { timeout: 10000 });
+        filled.push('username');
+      }
+      await password.fill(creds.password, { timeout: 10000 });
+      filled.push('password');
+      if (submit) await tabState.page.keyboard.press('Enter');
+    });
+    res.json({ ok: true, filled, submitted: !!submit });
+  } catch (err) {
+    if (err.status === 422) return res.status(422).json({ error: 'no_password_field', detail: err.message });
+    log('error', 'vault fill failed', { reqId: req.reqId, error: err.message });
+    res.status(500).json({ error: 'vault_fill_failed', detail: 'The login could not be filled. Check that the form is on the page.' });
+  }
+});
+
 app.post('/tabs/:tabId/type', async (req, res) => {
   const blocked = agentActionBlock(req.params.tabId);
   if (blocked) return res.status(409).json(blocked);

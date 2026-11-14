@@ -20,6 +20,12 @@ export const ROUTES = [
   { m: 'GET', re: new RegExp(`^/tabs/${T}/(snapshot|state|links|screenshot|downloads|images|stats|control)$`), kind: 'tab', tabAt: 1 },
   { m: 'POST', re: new RegExp(`^/tabs/${T}/(navigate|wait|overlays/dismiss|click|upload|type|select|press|scroll|viewport|back|forward|refresh|fetch-current-resource|evaluate|extract|handoff|handoff/release|checkpoint)$`), kind: 'tab', tabAt: 1 },
   { m: 'DELETE', re: new RegExp(`^/tabs/${T}$`), kind: 'tab', tabAt: 1, closes: true },
+  { m: 'POST', re: new RegExp(`^/tabs/${T}/vault/fill$`), kind: 'tab', tabAt: 1 },
+
+  // Login vault: each user's site logins, encrypted. Passwords are never returned.
+  { m: 'POST', re: /^\/vault\/logins$/, kind: 'user' },
+  { m: 'GET', re: /^\/vault\/logins$/, kind: 'user' },
+  { m: 'DELETE', re: /^\/vault\/logins\/([^/]+)$/, kind: 'user' },
 
   // Sessions, traces, cookies
   { m: 'GET', re: /^\/sessions\/([^/]+)\/traces$/, kind: 'session', userAt: 1 },
