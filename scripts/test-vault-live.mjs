@@ -17,7 +17,7 @@ const TEST_USER = process.env.VAULT_TEST_USERNAME || 'tomsmith';
 const TEST_PASS = process.env.VAULT_TEST_PASSWORD || 'SuperSecretPassword!';
 
 const TWO_STEP_JS = `(() => {
-  document.body.innerHTML = '<form id="e"><label>Email <input type="email" name="user"></label><button type="submit">Next</button></form>';
+  document.body.innerHTML = '<form id="e"><label>Email <input type="text" name="user"></label><button type="submit">Next</button></form>';
   document.getElementById('e').addEventListener('submit', (ev) => {
     ev.preventDefault();
     document.body.innerHTML = '<form id="p"><label>Password <input type="password" name="pw"></label></form>';
@@ -69,14 +69,16 @@ try {
 
     // 3b. Two-step sign-in: the email is on one page, the password on the next. The page is built in place
     // on the same host, so the login stays allowed.
-    await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: TWO_STEP_JS } });
+    const prepared = await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: TWO_STEP_JS } });
+    report.check('two-step page prepared on the test host', prepared.data?.result === 'ok', `result ${JSON.stringify(prepared.data?.result ?? prepared.data?.error ?? null)}`);
     const two = await call(`/tabs/${tabId}/vault/fill`, { method: 'POST', body: { userId, loginId, submit: false } });
-    report.check('two-step: email then password filled', two.status === 200 && two.data?.status === 'password_filled' && two.data?.filled?.includes('username') && two.data?.filled?.includes('password') && two.data?.submitted === true, `HTTP ${two.status}, ${JSON.stringify(two.data?.filled ?? two.data?.error)}`);
+    report.check('two-step: email then password filled', two.status === 200 && two.data?.status === 'password_filled' && two.data?.filled?.includes('username') && two.data?.filled?.includes('password') && two.data?.submitted === true, `HTTP ${two.status}, status ${two.data?.status ?? two.data?.error}, filled ${JSON.stringify(two.data?.filled ?? [])}`);
     const len2 = Number((await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: "(() => { const p = document.querySelector('input[type=password]'); return String(p ? p.value.length : -1); })()" } })).data?.result);
     report.check('two-step: password field holds the saved password', len2 === TEST_PASS.length, `length ${len2}`);
 
     // 3c. A page that asks only for a code: the fill hands the tab to a person.
-    await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: CODE_ONLY_JS } });
+    const codePrepared = await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: CODE_ONLY_JS } });
+    report.check('code page prepared on the test host', codePrepared.data?.result === 'ok', `result ${JSON.stringify(codePrepared.data?.result ?? codePrepared.data?.error ?? null)}`);
     const code = await call(`/tabs/${tabId}/vault/fill`, { method: 'POST', body: { userId, loginId } });
     report.check('code page: status needs_code', code.status === 200 && code.data?.status === 'needs_code', `HTTP ${code.status}, ${code.data?.status ?? code.data?.error}`);
     report.check('code page: handed to a person in the live view', code.data?.handoff?.mode === 'human', JSON.stringify(code.data?.handoff ?? null));
