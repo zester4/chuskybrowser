@@ -66,6 +66,7 @@ const PROBE = `(() => {
     webglRenderer: webgl,
     hardwareConcurrency: navigator.hardwareConcurrency,
     bodyText: document.body ? document.body.innerText.slice(0, 1200) : '',
+    fullText: full.slice(0, 40000),
   });
 })()`;
 
@@ -75,6 +76,23 @@ const BLOCKED_TEXT = /access denied|verify you are human|checking your browser|u
 const BLOCKED_TITLE = /just a moment|attention required|access denied|forbidden/i;
 const report = makeReporter();
 const results = [];
+
+// A target can name the text a detector shows for its verdict, so each run records what
+// that verdict said. Optional per target:
+//   verdictRecord: regex; the matched line (with 160 chars of context) is saved on the run.
+//   verdictFail:   regex; if it matches the page text, the run fails.
+// Neither is set for the hard targets yet: their verdict wording is recorded first, then the rule is written.
+function readVerdict(target, fullText) {
+  const out = { recorded: null, failed: false };
+  if (target.verdictRecord) {
+    const m = new RegExp(target.verdictRecord, 'i').exec(fullText);
+    if (m) out.recorded = fullText.slice(m.index, m.index + 160).replace(/\s+/g, ' ').trim();
+  }
+  if (target.verdictFail) {
+    out.failed = new RegExp(target.verdictFail, 'i').test(fullText);
+  }
+  return out;
+}
 
 async function runOnce(target) {
   const userId = `bench-${randomUUID()}`;
@@ -94,7 +112,10 @@ async function runOnce(target) {
       try { probe = JSON.parse(ev.data.result); } catch { probe = null; }
     }
     const softwareGpu = !!(probe?.webglRenderer && SOFTWARE_RENDERERS.test(probe.webglRenderer));
+    const verdict = readVerdict(target, probe?.fullText ?? '');
     return {
+      verdict: verdict.recorded,
+      verdictFailed: verdict.failed,
       headlessPct: probe?.headlessPct ?? null,
       textLength: (probe?.bodyText ?? '').trim().length,
       target: target.id,
@@ -132,7 +153,10 @@ for (const target of targets) {
     const isCreep = target.id === 'creepjs';
     const headlessOk = !isCreep || (r.headlessPct !== null && r.headlessPct <= maxHeadless);
     if (isCreep) detail += `, headless ${r.headlessPct ?? 'not found'}% (max ${maxHeadless}%)`;
-    report.check(`${target.id} run ${i}`, !!r.loaded && r.kind === 'ok' && !blockedText && !r.softwareGpu && !r.webdriverExposed && hasContent && headlessOk, detail);
+    if (r.verdict) detail += `, verdict: "${r.verdict}"`;
+    const verdictOk = !r.verdictFailed;
+    if (r.verdictFailed) detail += ', verdict rule failed';
+    report.check(`${target.id} run ${i}`, !!r.loaded && r.kind === 'ok' && !blockedText && !r.softwareGpu && !r.webdriverExposed && hasContent && headlessOk && verdictOk, detail);
   }
 }
 
