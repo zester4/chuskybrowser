@@ -170,7 +170,7 @@ claude mcp add chuskybrowser -- node /Users/you/src/chuskybrowser/mcp/server.mjs
 | Cursor | Settings → MCP — server shows green |
 | opencode | `opencode mcp list` |
 
-You should see 35 tools: the 11 browser tools (`chusky_create_tab`, `chusky_snapshot`, `chusky_click`, `chusky_type`, `chusky_navigate`, `chusky_scroll`, `chusky_screenshot`, `chusky_evaluate`, `chusky_list_tabs`, `chusky_close_tab`, `chusky_import_cookies`), two handoff tools (`chusky_handoff_start`, `chusky_handoff_release`), three payment tools (`chusky_pay_arm`, `chusky_pay_status`, `chusky_pay_disarm`), eight AgentCard tools (`agentcard_enrol`, `agentcard_cards`, `agentcard_placeholder`, `agentcard_buy`, `agentcard_merchants`, `agentcard_presets_list`, `agentcard_preset_set`, `agentcard_preset_attach`). The user id comes from `CHUSKY_USER_ID`, never from the model.
+You should see 38 tools: the 11 browser tools (`chusky_create_tab`, `chusky_snapshot`, `chusky_click`, `chusky_type`, `chusky_navigate`, `chusky_scroll`, `chusky_screenshot`, `chusky_evaluate`, `chusky_list_tabs`, `chusky_close_tab`, `chusky_import_cookies`), two handoff tools (`chusky_handoff_start`, `chusky_handoff_release`), three payment tools (`chusky_pay_arm`, `chusky_pay_status`, `chusky_pay_disarm`), eight AgentCard tools (`agentcard_enrol`, `agentcard_cards`, `agentcard_placeholder`, `agentcard_buy`, `agentcard_merchants`, `agentcard_presets_list`, `agentcard_preset_set`, `agentcard_preset_attach`), and three login vault tools (`chusky_vault_list_logins`, `chusky_vault_fill_login`, `chusky_vault_delete_login`). The user id comes from `CHUSKY_USER_ID`, never from the model.
 
 ## Tools
 

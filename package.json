@@ -106,6 +106,18 @@
         "description": "Close a browser tab"
       },
       {
+        "name": "chusky_vault_list_logins",
+        "description": "List the user's saved site logins (no usernames or passwords)"
+      },
+      {
+        "name": "chusky_vault_fill_login",
+        "description": "Fill a saved login into the sign-in form on a tab, without returning the password"
+      },
+      {
+        "name": "chusky_vault_delete_login",
+        "description": "Delete a saved site login"
+      },
+      {
         "name": "chusky_evaluate",
         "description": "Execute JavaScript in a Camoufox tab page context"
       },

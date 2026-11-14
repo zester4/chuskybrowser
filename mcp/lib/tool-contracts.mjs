@@ -194,6 +194,37 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'chusky_vault_list_logins',
+    description:
+      "List the saved site logins for this user: site, label and id. Never returns usernames or passwords. Use the id with chusky_vault_fill_login.",
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'chusky_vault_fill_login',
+    description:
+      "Fill a saved login into the sign-in form on the current tab. The password goes straight into the page and is never returned to you. Works on the page's own sign-in form only; refuses any page outside the login's allowed sites. If the site asks for a verification code, returns status 'needs_code' and the person must enter it in the live view before you continue.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Tab identifier' },
+        loginId: { type: 'string', description: 'Login id from chusky_vault_list_logins' },
+        submit: { type: 'boolean', description: 'Press Enter after the password is filled' },
+      },
+      required: ['tabId', 'loginId'],
+    },
+  },
+  {
+    name: 'chusky_vault_delete_login',
+    description: 'Delete a saved site login for this user.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        loginId: { type: 'string', description: 'Login id from chusky_vault_list_logins' },
+      },
+      required: ['loginId'],
+    },
+  },
+  {
     name: 'chusky_evaluate',
     description:
       "Execute JavaScript in a Camoufox tab's page context. Returns the result of the expression. Use for injecting scripts, reading page state, or calling web app APIs.",
@@ -631,6 +662,28 @@ export function buildRequest(name, args, ctx) {
       return {
         method: 'DELETE',
         path: `/tabs/${args.tabId}?${new URLSearchParams({ userId })}`,
+        auth: 'accessKey',
+        responseKind: 'json',
+      };
+    case 'chusky_vault_list_logins':
+      return {
+        method: 'GET',
+        path: `/vault/logins?${new URLSearchParams({ userId })}`,
+        auth: 'accessKey',
+        responseKind: 'json',
+      };
+    case 'chusky_vault_fill_login':
+      return {
+        method: 'POST',
+        path: `/tabs/${args.tabId}/vault/fill`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: { userId, loginId: args.loginId, submit: args.submit === true },
+      };
+    case 'chusky_vault_delete_login':
+      return {
+        method: 'DELETE',
+        path: `/vault/logins/${args.loginId}?${new URLSearchParams({ userId })}`,
         auth: 'accessKey',
         responseKind: 'json',
       };

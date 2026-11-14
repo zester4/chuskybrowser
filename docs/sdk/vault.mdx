@@ -1,0 +1,107 @@
+---
+title: Login vault
+description: Save a customer's site logins once, and let the browser sign in for them without the password ever reaching the agent.
+---
+
+The login vault stores a user's site logins, encrypted. The browser fills them into a sign-in form when the agent asks. The password goes from the vault straight into the page. It is never returned to the agent, the MCP tool, or your logs.
+
+## How it fits together
+
+| Step | Who does it | Method |
+|---|---|---|
+| Save a login | Your server, from your own user's settings page | `saveLogin` |
+| See what is saved | The agent, or your server | `listLogins` (no passwords) |
+| Sign in on a page | The agent | `fillLogin` |
+| Enter a verification code | The person, in the live view | Handed over automatically |
+| Remove a login | Your server or the agent | `deleteLogin` |
+
+**Save logins from your server, never from an agent.** A password saved through an agent passes through the agent's context, which is what the vault is built to avoid. The MCP server therefore has no save tool.
+
+## Save a login
+
+```js
+import { forUser } from 'chuskybrowser';
+
+// In your own server code, after the user has entered their details on your settings page.
+const browser = forUser(userIdFromYourSession);
+const saved = await browser.saveLogin({
+  site: 'https://shop.example.com/login',
+  username: 'alex@example.com',
+  password: passwordFromYourForm,
+  label: 'Example Shop',
+  allowedHosts: ['example.com'], // optional: other hosts this login may be used on
+});
+// saved: { id, site, hosts, label, createdAt }. The password is not returned.
+```
+
+- `site` is the sign-in page. The login is only ever filled on this site, on the same scheme and port.
+- `allowedHosts` adds other hosts, and their subdomains. `example.com` covers `accounts.example.com`, but not `evil-example.com`. Up to 10 extra hosts.
+
+## List and remove logins
+
+```js
+const { logins } = await browser.listLogins();   // [{ id, site, hosts, label, createdAt }]
+await browser.deleteLogin(logins[0].id);
+```
+
+Listing never includes a username or password.
+
+## Let the agent sign in
+
+```js
+const tab = await browser.openTab({ url: 'https://shop.example.com/login', sessionKey: taskId });
+const result = await browser.fillLogin(tab.tabId, { loginId: logins[0].id, submit: false });
+// result.status === 'password_filled'; result.filled is ['username', 'password']
+```
+
+`fillLogin` does the sign-in in these steps:
+1. Fills the username, if the page has one.
+2. If the email and password are on separate pages, moves to the next page once, then fills the password.
+3. Fills the password, and presses Enter if you pass `submit: true`.
+
+It refuses to run on any page outside the login's allowed hosts. It checks this again at every step, so a login that redirects somewhere else stops there.
+
+### When the site asks for a code
+
+If the site asks for a verification code, `fillLogin` throws an error with the code `verification_code_needed`. The tab is already handed to the person in the live view. Ask the person for the code, and wait for them to finish. Do not retry the fill.
+
+```js
+import { ChuskyError } from 'chuskybrowser';
+
+try {
+  await browser.fillLogin(tab.tabId, { loginId });
+} catch (err) {
+  if (err instanceof ChuskyError && err.code === 'verification_code_needed') {
+    // Tell the person: "Please enter the code in the window we sent you."
+    // err.body.handoff holds the handoff details.
+  } else {
+    throw err;
+  }
+}
+```
+
+Other outcomes throw a `ChuskyError` with the code set to the status, for example `no_login_fields` when the page has no sign-in form, or `left_allowed_host` when the page moved to a host the login is not allowed on.
+
+## MCP tools
+
+| Tool | What it does |
+|---|---|
+| `chusky_vault_list_logins` | List the user's logins: id, site, label. No secrets. |
+| `chusky_vault_fill_login` | Fill a login on a tab. Returns `needs_code` when a code is needed. |
+| `chusky_vault_delete_login` | Delete a login. |
+
+Saving a login is not an MCP tool, for the reason above.
+
+## Limits
+
+- Works on username-and-password sign-in forms, including two-step ones.
+- Does not sign in with "Sign in with Google/Apple/Microsoft" buttons, passkeys, or security keys. Those need the person.
+- Verification codes are entered by the person in the live view.
+- A login can be filled 10 times a minute. Beyond that, the call returns `fill_rate_limited`.
+- Every save, delete and fill is written to an audit log. The log never includes a username or password.
+
+## Security rules
+
+- Take the user ID from your own authenticated session. Never from text the user types.
+- Never log the password, and never put it in a prompt, a tool argument or a message to the agent.
+- Only the person can enter a verification code. The agent must not ask for it in chat.

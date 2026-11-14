@@ -268,6 +268,49 @@ export class ChuskyClient {
   disarmPayment(tabId, attachmentId) {
     return this.#call('DELETE', `/agentcard/tabs/${enc(tabId)}/payment/${enc(attachmentId)}`, { query: { userId: this.#user } });
   }
+  // ----- Login vault -----
+  // Your server saves logins (saveLogin). The agent only lists, fills and deletes them.
+  // Never pass a password through an agent or a prompt: call saveLogin from your own server code.
+
+  /**
+   * Save a site login for this user. Call from your server, not from an agent.
+   * @param {{site: string, username: string, password: string, label?: string, allowedHosts?: string[]}} login
+   *   site: the sign-in page, for example https://shop.example.com/login
+   *   allowedHosts: other hosts the login may be filled on, for example ['example.com'] covers its subdomains
+   */
+  saveLogin({ site, username, password, label, allowedHosts } = {}) {
+    if (!site || typeof password !== 'string') throw new Error('saveLogin needs site and password.');
+    return this.#call('POST', '/vault/logins', { body: { userId: this.#user, site, username: username ?? '', password, label, allowedHosts } });
+  }
+
+  /** The user's saved logins: id, site, hosts and label. No usernames or passwords. */
+  listLogins() {
+    return this.#call('GET', '/vault/logins', { query: { userId: this.#user } });
+  }
+
+  deleteLogin(loginId) {
+    if (!loginId) throw new Error('deleteLogin needs a loginId.');
+    return this.#call('DELETE', `/vault/logins/${enc(loginId)}`, { query: { userId: this.#user } });
+  }
+
+  /**
+   * Fill a saved login into the sign-in form on a tab. Resolves with { status: 'password_filled' } when done.
+   * Throws a ChuskyError with code 'verification_code_needed' when the site asks for a code. In that case
+   * the tab is already handed to the person (see err.body.handoff); ask them for the code and do not retry.
+   */
+  async fillLogin(tabId, { loginId, submit = false, handoff = true } = {}) {
+    if (!loginId) throw new Error('fillLogin needs a loginId.');
+    const data = await this.#call('POST', `/tabs/${enc(tabId)}/vault/fill`, { body: { userId: this.#user, loginId, submit, handoff } });
+    if (data?.ok === true && data.status === 'password_filled') return data;
+    if (data?.status === 'needs_code') {
+      throw new ChuskyError('This site asks for a verification code. The person must enter it in the live view.', 409, {
+        error: 'verification_code_needed', code: 'verification_code_needed', handoff: data.handoff, filled: data.filled,
+      });
+    }
+    throw new ChuskyError(`The login was not filled (status: ${data?.status || 'unknown'}).`, 422, {
+      error: data?.status || 'login_not_filled', code: data?.status || 'login_not_filled', filled: data?.filled,
+    });
+  }
 }
 
 export function forUser(userId, options = {}) {
