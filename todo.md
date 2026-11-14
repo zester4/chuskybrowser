@@ -129,3 +129,9 @@ need the connections flow for `link_status`.
 ## Frontend work
 
 See `updates.md` in the frontend repo. Its open items are the frontend's, not the backend's.
+
+## Usage queue on Railway (done in code; Railway setting done by hand)
+
+- Undelivered usage events are kept in a file when `CHUSKY_USAGE_QUEUE_FILE` is set, and resent on restart.
+- Railway service variable: `CHUSKY_USAGE_QUEUE_FILE=/data/usage-queue.json` (on the `/data` volume). Set and confirmed.
+- Without the variable the queue is in memory only, as before.
