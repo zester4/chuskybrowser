@@ -3,11 +3,17 @@
 // the result as JSON.
 // Usage: node scripts/mcp-call.mjs <tool_name> '<json-args>'
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const SERVER = resolve(ROOT, "mcp", "server.mjs");
+
+// Read the repo's .env (the same file the live scripts read). Values already set in the
+// shell win over .env, so a one-off $env: setting still overrides the file.
+const envFile = resolve(ROOT, ".env");
+if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const [toolName, argsJson] = process.argv.slice(2);
 if (!toolName) {
@@ -30,6 +36,8 @@ const proc = spawn(process.execPath, [SERVER], {
     // and can reach the same server. Without these the server gets a random user.
     CHUSKY_ACCESS_KEY: process.env.CHUSKY_ACCESS_KEY || "",
     CHUSKY_USER_ID: process.env.CHUSKY_USER_ID || "",
+    CHUSKYBROWSER_BASE_URL: process.env.CHUSKYBROWSER_BASE_URL || "",
+    CHUSKYBROWSER_API_KEY: process.env.CHUSKYBROWSER_API_KEY || "",
   },
   stdio: ["pipe", "pipe", "pipe"],
 });
