@@ -224,7 +224,10 @@ app.use((req, res, next) => {
   res.end = function (...args) {
     const ms = Date.now() - req.startTime;
     const isErrorStatus = res.statusCode >= 400;
-    requestsTotal.labels(action, isErrorStatus ? 'error' : 'success').inc();
+    // Monitoring calls are not usage: a metrics scrape or a health check must not move the count.
+    if (req.path !== '/metrics' && req.path !== '/health') {
+      requestsTotal.labels(action, isErrorStatus ? 'error' : 'success').inc();
+    }
     done();
 
     if (req.path !== '/health') {
