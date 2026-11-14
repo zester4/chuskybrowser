@@ -16,6 +16,19 @@ const LOGIN_URL = process.env.VAULT_TEST_LOGIN_URL || 'https://the-internet.hero
 const TEST_USER = process.env.VAULT_TEST_USERNAME || 'tomsmith';
 const TEST_PASS = process.env.VAULT_TEST_PASSWORD || 'SuperSecretPassword!';
 
+const TWO_STEP_JS = `(() => {
+  document.body.innerHTML = '<form id="e"><label>Email <input type="email" name="user"></label><button type="submit">Next</button></form>';
+  document.getElementById('e').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    document.body.innerHTML = '<form id="p"><label>Password <input type="password" name="pw"></label></form>';
+  });
+  return 'ok';
+})()`;
+const CODE_ONLY_JS = `(() => {
+  document.body.innerHTML = '<form><label>Code <input type="text" name="code" autocomplete="one-time-code"></label></form>';
+  return 'ok';
+})()`;
+
 const report = makeReporter();
 const userId = `vault-test-${randomUUID()}`;
 const sessionKey = `s-${randomUUID()}`;
@@ -53,6 +66,22 @@ try {
     const probe = await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: "(() => { const p = document.querySelector('input[type=password]'); return String(p ? p.value.length : -1); })()" } });
     const len = Number(probe.data?.result);
     report.check('password field now holds the saved password', len === TEST_PASS.length, `length ${len}`);
+
+    // 3b. Two-step sign-in: the email is on one page, the password on the next. The page is built in place
+    // on the same host, so the login stays allowed.
+    await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: TWO_STEP_JS } });
+    const two = await call(`/tabs/${tabId}/vault/fill`, { method: 'POST', body: { userId, loginId, submit: false } });
+    report.check('two-step: email then password filled', two.status === 200 && two.data?.status === 'password_filled' && two.data?.filled?.includes('username') && two.data?.filled?.includes('password') && two.data?.submitted === true, `HTTP ${two.status}, ${JSON.stringify(two.data?.filled ?? two.data?.error)}`);
+    const len2 = Number((await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: "(() => { const p = document.querySelector('input[type=password]'); return String(p ? p.value.length : -1); })()" } })).data?.result);
+    report.check('two-step: password field holds the saved password', len2 === TEST_PASS.length, `length ${len2}`);
+
+    // 3c. A page that asks only for a code: the fill hands the tab to a person.
+    await call(`/tabs/${tabId}/evaluate`, { method: 'POST', body: { userId, expression: CODE_ONLY_JS } });
+    const code = await call(`/tabs/${tabId}/vault/fill`, { method: 'POST', body: { userId, loginId } });
+    report.check('code page: status needs_code', code.status === 200 && code.data?.status === 'needs_code', `HTTP ${code.status}, ${code.data?.status ?? code.data?.error}`);
+    report.check('code page: handed to a person in the live view', code.data?.handoff?.mode === 'human', JSON.stringify(code.data?.handoff ?? null));
+    const blockedAfter = await call(`/tabs/${tabId}/vault/fill`, { method: 'POST', body: { userId, loginId, handoff: false } });
+    report.check('while a person holds the tab, the agent is refused (409)', blockedAfter.status === 409, `HTTP ${blockedAfter.status}`);
   }
 
   // 4. A login saved for another site must not fill on this page.

@@ -18,6 +18,8 @@
  *   - a fingerprint probe: navigator.webdriver, platform, timezone, languages,
  *     WebGL renderer. Software renderers (SwiftShader, llvmpipe) are flagged.
  *   - time to first state.
+ *   - CreepJS: the "% like headless" score (must be at most --max-headless, default 10).
+ *   - the page has real content (at least minText characters, default 200).
  */
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -53,7 +55,10 @@ const PROBE = `(() => {
     const d = g && g.getExtension('WEBGL_debug_renderer_info');
     if (d) webgl = g.getParameter(d.UNMASKED_RENDERER_WEBGL);
   } catch (e) {}
+  const full = (document.body && document.body.innerText) || '';
+  const hp = full.match(/(\\d+)% like headless/);
   return JSON.stringify({
+    headlessPct: hp ? Number(hp[1]) : null,
     webdriver: navigator.webdriver ?? null,
     platform: navigator.platform,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -64,6 +69,7 @@ const PROBE = `(() => {
   });
 })()`;
 
+const maxHeadless = Math.max(0, parseInt(flag('--max-headless', '10'), 10));
 const SOFTWARE_RENDERERS = /swiftshader|llvmpipe|software/i;
 const BLOCKED_TEXT = /access denied|verify you are human|checking your browser|unusual traffic|are you a robot|just a moment|additional verification required|troubleshooting cloudflare|attention required|ray id for this request/i;
 const BLOCKED_TITLE = /just a moment|attention required|access denied|forbidden/i;
@@ -89,6 +95,8 @@ async function runOnce(target) {
     }
     const softwareGpu = !!(probe?.webglRenderer && SOFTWARE_RENDERERS.test(probe.webglRenderer));
     return {
+      headlessPct: probe?.headlessPct ?? null,
+      textLength: (probe?.bodyText ?? '').trim().length,
       target: target.id,
       loaded: state.status === 200,
       error: state.status === 200 ? undefined : `state HTTP ${state.status}: ${state.data?.error ?? 'no detail'}`,
@@ -117,7 +125,14 @@ for (const target of targets) {
       : `kind=${r.kind}, ${r.elapsedMs}ms${r.softwareGpu ? ', software GPU' : ''}${r.webdriverExposed ? ', webdriver exposed' : ''}`;
     const blockedText = BLOCKED_TEXT.test(r.visibleText ?? '') || BLOCKED_TITLE.test(r.title ?? '');
     if (blockedText) detail += ', block text on page';
-    report.check(`${target.id} run ${i}`, !!r.loaded && r.kind === 'ok' && !blockedText && !r.softwareGpu && !r.webdriverExposed, detail);
+    // Real content, not an empty shell or a challenge page. Each target can set its own minimum (minText).
+    const hasContent = (r.textLength ?? 0) >= (target.minText ?? 200);
+    if (!hasContent && r.loaded) detail += `, only ${r.textLength ?? 0} chars of content`;
+    // CreepJS reports how much of its fingerprint looks like headless Firefox. Lower is better.
+    const isCreep = target.id === 'creepjs';
+    const headlessOk = !isCreep || (r.headlessPct !== null && r.headlessPct <= maxHeadless);
+    if (isCreep) detail += `, headless ${r.headlessPct ?? 'not found'}% (max ${maxHeadless}%)`;
+    report.check(`${target.id} run ${i}`, !!r.loaded && r.kind === 'ok' && !blockedText && !r.softwareGpu && !r.webdriverExposed && hasContent && headlessOk, detail);
   }
 }
 

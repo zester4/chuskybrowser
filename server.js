@@ -5815,6 +5815,7 @@ app.post('/vault/logins', express.json({ limit: '16kb' }), (req, res) => {
   if (!userId) return res.status(400).json({ error: 'userId required' });
   try {
     const saved = vault.save(normalizeUserId(userId), { site, username: username ?? '', password, label, allowedHosts });
+    vault.audit('save', { userId: normalizeUserId(userId), loginId: saved.id });
     res.status(201).json(saved);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -5834,6 +5835,7 @@ app.delete('/vault/logins/:loginId', (req, res) => {
   if (!userId) return res.status(400).json({ error: 'userId required' });
   const removed = vault.remove(normalizeUserId(userId), req.params.loginId);
   if (!removed) return res.status(404).json({ error: 'login_not_found' });
+  vault.audit('remove', { userId: normalizeUserId(userId), loginId: req.params.loginId });
   res.json({ ok: true });
 });
 
@@ -5842,7 +5844,7 @@ app.delete('/vault/logins/:loginId', (req, res) => {
 // login, checked again at every step. The password goes from the vault to the page and is never returned,
 // logged or stored. A page that asks for a code or a check returns status "needs_code" for a person to finish.
 const LOGIN_FIELDS = {
-  username: 'input[autocomplete="username"]:visible, input[type="email"]:visible, input[name*="user" i]:visible, input[name*="email" i]:visible, input[type="text"]:visible',
+  username: 'input[autocomplete="username"]:visible, input[type="email"]:visible, input[name*="user" i]:visible, input[name*="email" i]:visible, input[type="text"]:visible:not([autocomplete="one-time-code"]):not([name*="code" i]):not([name*="otp" i])',
   password: 'input[type="password"]:visible',
   code: 'input[autocomplete="one-time-code"]:visible, input[name*="otp" i]:visible, input[name*="code" i]:visible',
 };
@@ -5853,7 +5855,7 @@ app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, 
   const blocked = agentActionBlock(req.params.tabId);
   if (blocked) return res.status(409).json(blocked);
   const tabId = req.params.tabId;
-  const { userId, loginId, submit = false } = req.body || {};
+  const { userId, loginId, submit = false, handoff = true, idleMs } = req.body || {};
   if (!userId || !loginId) return res.status(400).json({ error: 'userId and loginId required' });
   const uid = normalizeUserId(userId);
   const session = sessions.get(uid);
@@ -5861,11 +5863,19 @@ app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, 
   if (!found) return tabNotFoundResponse(res, tabId);
   session.lastAccess = Date.now();
   const { tabState } = found;
+  const page = tabState.page;
+  const audit = (status, extra = {}) => vault.audit('fill', { userId: uid, loginId, tabId, status, ...extra });
+
+  if (!vault.allowFill(uid, loginId)) {
+    audit('rate_limited');
+    return res.status(429).json({ error: 'fill_rate_limited', detail: 'This login was filled too often in the last minute. Wait before trying again.' });
+  }
   try {
-    if (!vault.credentialsFor(uid, loginId, tabState.page.url())) {
+    const host = new URL(page.url()).hostname;
+    if (!vault.credentialsFor(uid, loginId, page.url())) {
+      audit('refused_wrong_site', { host });
       return res.status(404).json({ error: 'login_not_for_this_site', detail: 'The current page is not an allowed host for this login.' });
     }
-    const page = tabState.page;
     const filled = [];
     let status = 'no_fields';
     let submitted = false;
@@ -5909,10 +5919,20 @@ app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, 
       }
       status = 'steps_exhausted';
     });
-    if (status === 'no_fields') return res.status(422).json({ error: 'no_login_fields', detail: 'No sign-in fields on this page.', filled, status });
-    if (status === 'left_allowed_host') return res.status(409).json({ error: 'left_allowed_host', detail: 'The page moved to a host this login is not allowed on. Nothing more was filled.', filled, status });
-    res.json({ ok: status === 'password_filled', status, filled, submitted });
+
+    if (status === 'no_fields') { audit(status); return res.status(422).json({ error: 'no_login_fields', detail: 'No sign-in fields on this page.', filled, status }); }
+    if (status === 'left_allowed_host') { audit(status, { host, filled }); return res.status(409).json({ error: 'left_allowed_host', detail: 'The page moved to a host this login is not allowed on. Nothing more was filled.', filled, status }); }
+
+    // A code is needed: hand the tab to the person in the live view, the same way a checkpoint does.
+    let handoffInfo = null;
+    if (status === 'needs_code' && handoff !== false) {
+      const control = setHuman(tabId, { reason: HANDOFF_REASON_BY_STATE.two_factor, idleMs });
+      handoffInfo = { mode: 'human', until: new Date(control.until).toISOString(), reason: control.reason };
+    }
+    audit(status, { filled, submitted, host });
+    res.json({ ok: status === 'password_filled', status, filled, submitted, handoff: handoffInfo });
   } catch (err) {
+    audit('error');
     log('error', 'vault fill failed', { reqId: req.reqId, error: err.message });
     res.status(500).json({ error: 'vault_fill_failed', detail: 'The login could not be filled. Check that the form is on the page.' });
   }

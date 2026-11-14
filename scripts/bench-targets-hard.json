@@ -1,6 +1,19 @@
 [
-  { "id": "nowsecure", "url": "https://nowsecure.nl/" },
-  { "id": "incolumitas", "url": "https://bot.incolumitas.com/" },
-  { "id": "browserleaks", "url": "https://browserleaks.com/javascript" },
-  { "id": "indeed", "url": "https://www.indeed.com/" }
+  {
+    "id": "nowsecure",
+    "url": "https://nowsecure.nl/",
+    "minText": 20
+  },
+  {
+    "id": "incolumitas",
+    "url": "https://bot.incolumitas.com/"
+  },
+  {
+    "id": "browserleaks",
+    "url": "https://browserleaks.com/javascript"
+  },
+  {
+    "id": "indeed",
+    "url": "https://www.indeed.com/"
+  }
 ]

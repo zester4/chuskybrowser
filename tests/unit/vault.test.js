@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createVault, parseMasterKey, siteOrigin, allowedHostsFor, pageAllowed } from '../../lib/vault.js';
+import { createVault, parseMasterKey, siteOrigin, allowedHostsFor, pageAllowed, rotateVaultKey } from '../../lib/vault.js';
 
 const KEY = Buffer.alloc(32, 7);
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vault-')), 'vault.json');
@@ -42,9 +42,9 @@ describe('login vault', () => {
     const file = tmpFile();
     const v = createVault({ masterKey: KEY, filePath: file });
     const meta = v.save('alice', { site: 'https://a.test', username: 'u', password: 'secret' });
-    const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
-    rows[0].password.data = Buffer.from('forged!!').toString('base64');
-    fs.writeFileSync(file, JSON.stringify(rows));
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    doc.rows[0].password.data = Buffer.from('forged!!').toString('base64');
+    fs.writeFileSync(file, JSON.stringify(doc));
     const reopened = createVault({ masterKey: KEY, filePath: file });
     expect(() => reopened.credentialsFor('alice', meta.id, 'https://a.test')).toThrow();
   });
@@ -54,19 +54,58 @@ describe('login vault', () => {
     const v = createVault({ masterKey: KEY, filePath: file });
     const a = v.save('alice', { site: 'https://a.test', username: 'u', password: 'secret' });
     const b = v.save('alice', { site: 'https://a.test', username: 'u2', password: 'other' });
-    const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
-    rows[1].password = rows[0].password;
-    fs.writeFileSync(file, JSON.stringify(rows));
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    doc.rows[1].password = doc.rows[0].password;
+    fs.writeFileSync(file, JSON.stringify(doc));
     const reopened = createVault({ masterKey: KEY, filePath: file });
     expect(() => reopened.credentialsFor('alice', b.id, 'https://a.test')).toThrow();
     expect(reopened.credentialsFor('alice', a.id, 'https://a.test').password).toBe('secret');
   });
 
-  test('a wrong master key cannot read saved logins', () => {
+  test('a wrong master key is refused at startup, before any login is touched', () => {
     const file = tmpFile();
-    const meta = createVault({ masterKey: KEY, filePath: file }).save('alice', { site: 'https://a.test', username: 'u', password: 'secret' });
-    const other = createVault({ masterKey: Buffer.alloc(32, 9), filePath: file });
-    expect(() => other.credentialsFor('alice', meta.id, 'https://a.test')).toThrow();
+    createVault({ masterKey: KEY, filePath: file }).save('alice', { site: 'https://a.test', username: 'u', password: 'secret' });
+    expect(() => createVault({ masterKey: Buffer.alloc(32, 9), filePath: file })).toThrow(/does not match the vault file/);
+  });
+
+  test('the audit file records each action without any username or password', () => {
+    const file = tmpFile();
+    const v = createVault({ masterKey: KEY, filePath: file, now: () => '2026-11-14T00:00:00.000Z' });
+    v.save('alice', { site: 'https://a.test', username: 'secret-user', password: 'secret-pass' });
+    v.audit('fill', { userId: 'alice', loginId: 'x', status: 'password_filled', username: 'leak', password: 'leak' });
+    const log = fs.readFileSync(`${file}.audit.jsonl`, 'utf8');
+    expect(log.trim().split('\n')).toHaveLength(1);
+    expect(log).toContain('"event":"fill"');
+    expect(log).not.toMatch(/secret-user|secret-pass|leak/);
+  });
+
+  test('a login cannot be filled more than the limit in the window', () => {
+    let clock = 1000;
+    const realNow = Date.now;
+    Date.now = () => clock;
+    try {
+      const v = createVault({ masterKey: KEY, filePath: tmpFile(), fillWindowMs: 60000, fillMax: 3 });
+      expect([1, 2, 3].map(() => v.allowFill('alice', 'L1'))).toEqual([true, true, true]);
+      expect(v.allowFill('alice', 'L1')).toBe(false);
+      expect(v.allowFill('alice', 'L2')).toBe(true);
+      clock += 61000;
+      expect(v.allowFill('alice', 'L1')).toBe(true);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('key rotation moves every login to the new key and keeps a backup', () => {
+    const file = tmpFile();
+    const old = createVault({ masterKey: KEY, filePath: file });
+    const meta = old.save('alice', { site: 'https://a.test', username: 'u', password: 'secret' });
+    const NEW = Buffer.alloc(32, 5);
+    expect(rotateVaultKey({ filePath: file, oldKey: KEY, newKey: NEW })).toBe(1);
+    expect(fs.readdirSync(path.dirname(file)).some((f) => f.includes('.bak-'))).toBe(true);
+    expect(() => createVault({ masterKey: KEY, filePath: file })).toThrow(/does not match/);
+    const fresh = createVault({ masterKey: NEW, filePath: file });
+    expect(fresh.credentialsFor('alice', meta.id, 'https://a.test').password).toBe('secret');
+    expect(() => rotateVaultKey({ filePath: file, oldKey: KEY, newKey: NEW })).toThrow(/old key does not match/);
   });
 
   test('a login covers its listed hosts and their subdomains, and nothing else', () => {
