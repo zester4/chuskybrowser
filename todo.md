@@ -27,9 +27,9 @@ Webhooks now also handle `checkout_authorization.cancelled` (status cancelled), 
 `duplicate_charge` and `outcome_reported` without changing the status. 139 AgentCard tests pass.
 
 Not done (decide before real customers):
-- **Order confirmation on the bridge.** The docs say to read the merchant's order result before telling the
-  user it is done. The bridge reports the approval and the processor's answer, not the order. The SDK's
-  `resolveMerchantResult` does this on the Playwright path only.
+- **Order confirmation on the bridge (done 2026-11-14).** `POST .../payment/{attachmentId}/order` records the
+  merchant's order number, and the status route shows `merchantOrder`. The agent reads the merchant's page and
+  reports it; the server does not read pages itself. Only an approved purchase can be confirmed.
 - **Duplicate charge alert.** The event is recorded, but nothing alerts a person yet.
 - **Cart details on the approval page.** `line_items`, `subtotal`, `shipping`, `tax` and `ship_to` are not sent.
   The approval page then shows only the merchant and amount.

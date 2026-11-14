@@ -60,7 +60,21 @@ The `phase` field tells you where things stand:
 - `pending`: the card request is paused, waiting for approval.
 - `completed`: the purchase went through.
 
-## 3. Cancel payment
+## 3. Confirm the order
+
+An approved payment is not a finished order. Once the page has finished, read the merchant's own confirmation page, then record the order:
+
+```
+POST /agentcard/tabs/{tabId}/payment/{attachmentId}/order?userId=customer-42
+```
+
+```json
+{ "orderId": "ORD-10482" }
+```
+
+Send `"confirmedWithoutOrderId": true` instead of `orderId` only when the store shows no order number. The order counts as complete only after this call. `GET /agentcard/tabs/{tabId}/payment/{attachmentId}` shows it as `merchantOrder`.
+
+## 4. Cancel payment
 
 ```
 DELETE /agentcard/tabs/{tabId}/payment/{attachmentId}?userId=customer-42

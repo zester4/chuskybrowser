@@ -351,3 +351,32 @@ describe('approve before pay: the card request binds to the approval', () => {
     await assert.rejects(s.service.checkout.request('bind-c', input), (e) => e.code === 'preparation_mismatch');
   });
 });
+
+describe('merchant confirmation of the order', () => {
+  test('approval alone is not complete; the merchant must confirm the order', async () => {
+    const s = makeService();
+    await enrol(s, 'order-a');
+    const p = await s.service.checkout.request('order-a', { merchant: 'Shop', amount: 2306, currency: 'usd', psp: 'stripe', checkoutOrigin: SHOP, request: { url: 'https://api.stripe.com/v1/tokens', method: 'POST' } });
+    await assert.rejects(s.service.checkout.confirmOrder('order-a', p.purchaseId, { orderId: 'ORD-1' }), (e) => e.code === 'not_approved');
+    s.fake.setAuthorization(p.purchaseId, { status: 'approved', charged_kind: 'captured' });
+    await s.service.checkout.refresh('order-a', p.purchaseId);
+    assert.equal(s.service.checkout.merchantOrderFor(p.purchaseId), null, 'no confirmation yet');
+    await assert.rejects(s.service.checkout.confirmOrder('order-a', p.purchaseId, {}), (e) => e.code === 'invalid_request');
+    const done = await s.service.checkout.confirmOrder('order-a', p.purchaseId, { orderId: 'ORD-1' });
+    assert.equal(done.merchantOrder.status, 'completed');
+    assert.equal(done.merchantOrder.orderId, 'ORD-1');
+  });
+
+  test('a merchant with no order number can confirm against the authorization id, and only its own user can', async () => {
+    const s = makeService();
+    await enrol(s, 'order-b');
+    await enrol(s, 'order-c');
+    const p = await s.service.checkout.request('order-b', { merchant: 'Shop', amount: 500, currency: 'usd', psp: 'stripe', checkoutOrigin: SHOP, request: { url: 'https://api.stripe.com/v1/tokens', method: 'POST' } });
+    s.fake.setAuthorization(p.purchaseId, { status: 'approved', charged_kind: 'captured' });
+    await s.service.checkout.refresh('order-b', p.purchaseId);
+    await assert.rejects(s.service.checkout.confirmOrder('order-c', p.purchaseId, { confirmedWithoutOrderId: true }), (e) => e.code === 'not_found');
+    const done = await s.service.checkout.confirmOrder('order-b', p.purchaseId, { confirmedWithoutOrderId: true });
+    assert.deepEqual(done.merchantOrder.confirmation, { kind: 'merchant_payment', authorizationId: p.purchaseId });
+  });
+});
+

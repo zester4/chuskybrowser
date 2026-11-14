@@ -1280,7 +1280,45 @@ app.get('/agentcard/tabs/:tabId/payment/:attachmentId', (req, res) => {
     approvalUrl: rec.approvalUrl,
     purchaseId: rec.purchaseId,
     results: rec.handle.results(),
+    // Approval is not a completed purchase: the order is complete only once the merchant confirms it.
+    merchantOrder: latestPurchaseIdFor(rec) ? agentcard.checkout.merchantOrderFor(latestPurchaseIdFor(rec)) : null,
   });
+});
+
+/** The purchase this payment last paused and got approved, or null. */
+function latestPurchaseIdFor(rec) {
+  const ids = rec.handle.results().map((r) => r.purchaseId).filter(Boolean);
+  return ids.length ? ids[ids.length - 1] : null;
+}
+
+/**
+ * @openapi
+ * /agentcard/tabs/{tabId}/payment/{attachmentId}/order:
+ *   post:
+ *     tags: [Payments]
+ *     summary: Record the merchant's order confirmation
+ *     description: >
+ *       Send the order number the merchant showed (or confirmedWithoutOrderId: true when it shows none),
+ *       after reading the merchant's own confirmation page. Only an approved purchase can be confirmed.
+ *     parameters:
+ *       - { name: tabId, in: path, required: true, schema: { type: string } }
+ *       - { name: attachmentId, in: path, required: true, schema: { type: string } }
+ *       - { name: userId, in: query, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: The recorded merchant confirmation }
+ *       404: { description: No payment attachment for this user and tab }
+ *       409: { description: No approved purchase on this payment yet }
+ */
+app.post('/agentcard/tabs/:tabId/payment/:attachmentId/order', express.json({ limit: '4kb' }), async (req, res) => {
+  const rec = agentcardAttachmentFor(req, res);
+  if (!rec) return;
+  try {
+    const purchaseId = latestPurchaseIdFor(rec);
+    if (!purchaseId) return res.status(409).json({ error: 'no_approved_purchase', message: 'No approved purchase on this payment yet' });
+    res.json(await agentcard.checkout.confirmOrder(rec.userId, purchaseId, req.body ?? {}));
+  } catch (err) {
+    sendAgentCardError(res, err, log);
+  }
 });
 app.delete('/agentcard/tabs/:tabId/payment/:attachmentId', async (req, res) => {
   const rec = agentcardAttachmentFor(req, res);

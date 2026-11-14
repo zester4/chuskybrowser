@@ -252,6 +252,37 @@ export function createCheckout({ api, store, vault, maxAmountCents = DEFAULT_MAX
     },
 
     /**
+     * Record the merchant's own confirmation of the order. A purchase is complete only when the merchant
+     * confirms it (SDK rule): an order id from the merchant, or, for a merchant that shows none, the
+     * authorization id itself. Approval alone is not a completed purchase.
+     */
+    async confirmOrder(userId, purchaseId, input) {
+      const p = store.getPurchase(purchaseId);
+      if (!p || p.userId !== userId) throw codeError('Purchase not found', 'not_found');
+      if (!['approved', 'submitted_on_device', 'settled'].includes(p.status)) {
+        throw codeError('Only an approved purchase can be confirmed by the merchant', 'not_approved');
+      }
+      const orderId = typeof input?.orderId === 'string' ? input.orderId.trim() : '';
+      let merchantOrder;
+      if (orderId) {
+        if (orderId.length > 120) throw invalid('orderId is too long (max 120 characters)');
+        merchantOrder = { status: 'completed', orderId };
+      } else if (input?.confirmedWithoutOrderId === true) {
+        merchantOrder = { status: 'completed', confirmation: { kind: 'merchant_payment', authorizationId: purchaseId } };
+      } else {
+        throw invalid('orderId is required: the order number the merchant showed. Send confirmedWithoutOrderId: true only when the merchant shows no order number.');
+      }
+      const updated = store.updatePurchase(purchaseId, { merchantOrder: { ...merchantOrder, confirmedAt: new Date(now()).toISOString() } });
+      record(updated, 'merchant_confirmed');
+      return { purchaseId, status: updated.status, merchantOrder: updated.merchantOrder };
+    },
+
+    /** The merchant's confirmation for a purchase, or null when none is recorded. */
+    merchantOrderFor(purchaseId) {
+      return store.getPurchase(purchaseId)?.merchantOrder ?? null;
+    },
+
+    /**
      * Apply one verified checkout_authorization.* webhook event.
      * @param {{ id: string, type: string, data?: object }} event
      */
