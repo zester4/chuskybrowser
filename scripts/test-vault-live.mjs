@@ -87,6 +87,8 @@ try {
   }
 
   // 4. A login saved for another site must not fill on this page.
+  // First hand the tab back, as the person would after entering the code. The fill is refused while a person holds it.
+  if (tabId) await call(`/tabs/${tabId}/handoff/release`, { method: 'POST', body: { userId } });
   const other = await call('/vault/logins', { method: 'POST', body: { userId, site: 'https://example.org', username: 'x', password: 'y', label: 'wrong site' } });
   const otherId = other.data?.id;
   if (otherId && tabId) {
