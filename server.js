@@ -5811,10 +5811,10 @@ app.post('/tabs/:tabId/upload', async (req, res) => {
 // Login vault routes. Passwords go in once and are never returned.
 app.post('/vault/logins', express.json({ limit: '16kb' }), (req, res) => {
   if (!vaultReady(res)) return;
-  const { userId, site, username, password, label } = req.body || {};
+  const { userId, site, username, password, label, allowedHosts } = req.body || {};
   if (!userId) return res.status(400).json({ error: 'userId required' });
   try {
-    const saved = vault.save(normalizeUserId(userId), { site, username: username ?? '', password, label });
+    const saved = vault.save(normalizeUserId(userId), { site, username: username ?? '', password, label, allowedHosts });
     res.status(201).json(saved);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -5837,8 +5837,17 @@ app.delete('/vault/logins/:loginId', (req, res) => {
   res.json({ ok: true });
 });
 
-// Fill a saved login into the tab's login form. The tab must be on the same origin the login was saved for.
-// The password goes from the vault to the page and is not returned, logged or stored anywhere else.
+// Fill a saved login into the tab's sign-in form. Works for a single page (email and password together)
+// and for two steps (email, then password on the next page). The tab must be on an allowed host of the
+// login, checked again at every step. The password goes from the vault to the page and is never returned,
+// logged or stored. A page that asks for a code or a check returns status "needs_code" for a person to finish.
+const LOGIN_FIELDS = {
+  username: 'input[autocomplete="username"]:visible, input[type="email"]:visible, input[name*="user" i]:visible, input[name*="email" i]:visible, input[type="text"]:visible',
+  password: 'input[type="password"]:visible',
+  code: 'input[autocomplete="one-time-code"]:visible, input[name*="otp" i]:visible, input[name*="code" i]:visible',
+};
+const MAX_LOGIN_STEPS = 4;
+
 app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, res) => {
   if (!vaultReady(res)) return;
   const blocked = agentActionBlock(req.params.tabId);
@@ -5846,31 +5855,64 @@ app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, 
   const tabId = req.params.tabId;
   const { userId, loginId, submit = false } = req.body || {};
   if (!userId || !loginId) return res.status(400).json({ error: 'userId and loginId required' });
-  const session = sessions.get(normalizeUserId(userId));
+  const uid = normalizeUserId(userId);
+  const session = sessions.get(uid);
   const found = session && findTab(session, tabId);
   if (!found) return tabNotFoundResponse(res, tabId);
   session.lastAccess = Date.now();
   const { tabState } = found;
   try {
-    const pageOrigin = new URL(tabState.page.url()).origin;
-    const creds = vault.credentialsFor(normalizeUserId(userId), loginId, pageOrigin);
-    if (!creds) return res.status(404).json({ error: 'login_not_for_this_site', detail: 'No saved login for this user matches the current page.' });
+    if (!vault.credentialsFor(uid, loginId, tabState.page.url())) {
+      return res.status(404).json({ error: 'login_not_for_this_site', detail: 'The current page is not an allowed host for this login.' });
+    }
+    const page = tabState.page;
     const filled = [];
+    let status = 'no_fields';
+    let submitted = false;
+    let usernameDone = false;
+    let advanced = false;
     await withTabLock(tabId, async () => {
-      const password = tabState.page.locator('input[type="password"]:visible').first();
-      if ((await password.count()) === 0) throw Object.assign(new Error('no password field on this page'), { status: 422 });
-      const username = tabState.page.locator('input[autocomplete="username"]:visible, input[type="email"]:visible, input[name*="user" i]:visible, input[name*="email" i]:visible, input[type="text"]:visible').first();
-      if (creds.username && (await username.count()) > 0) {
-        await username.fill(creds.username, { timeout: 10000 });
-        filled.push('username');
+      for (let step = 1; step <= MAX_LOGIN_STEPS; step += 1) {
+        // Checked at every step: a login that moves to a host outside the list stops here.
+        const creds = vault.credentialsFor(uid, loginId, page.url());
+        if (!creds) { status = 'left_allowed_host'; return; }
+        const pw = page.locator(LOGIN_FIELDS.password).first();
+        const un = page.locator(LOGIN_FIELDS.username).first();
+        const code = page.locator(LOGIN_FIELDS.code).first();
+        const hasPassword = (await pw.count()) > 0 && (await pw.isVisible());
+        const hasUser = (await un.count()) > 0 && (await un.isVisible());
+
+        if (hasUser && !usernameDone && creds.username) {
+          await un.fill(creds.username, { timeout: 10000 });
+          usernameDone = true;
+          filled.push('username');
+        }
+        if (hasPassword) {
+          await pw.fill(creds.password, { timeout: 10000 });
+          filled.push('password');
+          status = 'password_filled';
+          if (submit) { await page.keyboard.press('Enter'); submitted = true; }
+          return;
+        }
+        if (usernameDone && hasUser && !advanced) {
+          // Email is in, but the password is on the next page: move on once. Never resubmit the same email.
+          advanced = true;
+          await page.keyboard.press('Enter');
+          submitted = true;
+          await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+          await page.waitForSelector(`${LOGIN_FIELDS.password}, ${LOGIN_FIELDS.code}`, { timeout: 10000 }).catch(() => {});
+          continue;
+        }
+        if ((await code.count()) > 0 && (await code.isVisible())) { status = 'needs_code'; return; }
+        status = usernameDone ? 'username_only' : 'no_fields';
+        return;
       }
-      await password.fill(creds.password, { timeout: 10000 });
-      filled.push('password');
-      if (submit) await tabState.page.keyboard.press('Enter');
+      status = 'steps_exhausted';
     });
-    res.json({ ok: true, filled, submitted: !!submit });
+    if (status === 'no_fields') return res.status(422).json({ error: 'no_login_fields', detail: 'No sign-in fields on this page.', filled, status });
+    if (status === 'left_allowed_host') return res.status(409).json({ error: 'left_allowed_host', detail: 'The page moved to a host this login is not allowed on. Nothing more was filled.', filled, status });
+    res.json({ ok: status === 'password_filled', status, filled, submitted });
   } catch (err) {
-    if (err.status === 422) return res.status(422).json({ error: 'no_password_field', detail: err.message });
     log('error', 'vault fill failed', { reqId: req.reqId, error: err.message });
     res.status(500).json({ error: 'vault_fill_failed', detail: 'The login could not be filled. Check that the form is on the page.' });
   }

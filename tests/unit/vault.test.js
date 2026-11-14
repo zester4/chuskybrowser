@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createVault, parseMasterKey, siteOrigin } from '../../lib/vault.js';
+import { createVault, parseMasterKey, siteOrigin, allowedHostsFor, pageAllowed } from '../../lib/vault.js';
 
 const KEY = Buffer.alloc(32, 7);
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vault-')), 'vault.json');
@@ -67,6 +67,26 @@ describe('login vault', () => {
     const meta = createVault({ masterKey: KEY, filePath: file }).save('alice', { site: 'https://a.test', username: 'u', password: 'secret' });
     const other = createVault({ masterKey: Buffer.alloc(32, 9), filePath: file });
     expect(() => other.credentialsFor('alice', meta.id, 'https://a.test')).toThrow();
+  });
+
+  test('a login covers its listed hosts and their subdomains, and nothing else', () => {
+    const v = createVault({ masterKey: KEY, filePath: tmpFile() });
+    const m = v.save('alice', { site: 'https://accounts.google.com', allowedHosts: ['google.com'], username: 'u', password: 'p' });
+    expect(m.hosts).toEqual(['accounts.google.com', 'google.com']);
+    expect(v.credentialsFor('alice', m.id, 'https://myaccount.google.com/security')).not.toBeNull();
+    expect(v.credentialsFor('alice', m.id, 'https://google.com/signin')).not.toBeNull();
+    expect(v.credentialsFor('alice', m.id, 'https://evil-google.com/signin')).toBeNull();
+    expect(v.credentialsFor('alice', m.id, 'https://google.com.evil.test/signin')).toBeNull();
+    expect(v.credentialsFor('alice', m.id, 'http://google.com/signin')).toBeNull();
+    expect(v.credentialsFor('alice', m.id, 'https://google.com:8443/signin')).toBeNull();
+  });
+
+  test('pageAllowed and allowedHostsFor refuse bad host lists', () => {
+    expect(() => allowedHostsFor('https://a.test', ['not a host'])).toThrow(/not a hostname/);
+    expect(() => allowedHostsFor('https://a.test', Array(11).fill('x.test'))).toThrow(/at most 10/);
+    expect(allowedHostsFor('https://a.test', ['.B.test', 'a.test'])).toEqual(['a.test', 'b.test']);
+    expect(pageAllowed({ site: 'https://a.test', hosts: ['a.test'] }, 'https://a.test/x')).toBe(true);
+    expect(pageAllowed({ site: 'https://a.test', hosts: ['a.test'] }, 'not a url')).toBe(false);
   });
 
   test('bad input is refused with a clear error', () => {
