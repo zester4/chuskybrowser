@@ -201,7 +201,7 @@ export class ChuskyClient {
     return this.#call('POST', `/sessions/${enc(this.#user)}/cookies`, { body: { cookies } });
   }
 
-  // ----- AgentCard: vault, purchases, presets, merchants -----
+  // ----- Cards, purchases, presets, merchants -----
   enrolCard({ addAnother = false } = {}) {
     return this.#call('POST', '/agentcard/vault/enrol', { body: { userId: this.#user, addAnother } });
   }
@@ -218,7 +218,7 @@ export class ChuskyClient {
 
   sendEnrolLink() { return this.#call('POST', '/agentcard/vault/send-link', { body: { userId: this.#user } }); }
   disconnectVault() { return this.#call('DELETE', '/agentcard/vault/connection', { query: { userId: this.#user } }); }
-  eraseAgentCardData() { return this.#call('DELETE', '/agentcard/users', { query: { userId: this.#user } }); }
+  eraseCardData() { return this.#call('DELETE', '/agentcard/users', { query: { userId: this.#user } }); }
 
   merchants({ kind, q, limit, cursor } = {}) {
     return this.#call('GET', '/agentcard/merchants', { query: { userId: this.#user, kind, q, limit, cursor } });
@@ -262,6 +262,14 @@ export class ChuskyClient {
 
   paymentStatus(tabId, attachmentId) {
     return this.#call('GET', `/agentcard/tabs/${enc(tabId)}/payment/${enc(attachmentId)}`, { query: { userId: this.#user } });
+  }
+
+  // Records the merchant order. The order counts as complete only after this call.
+  confirmOrder(tabId, attachmentId, { orderId, confirmedWithoutOrderId } = {}) {
+    return this.#call('POST', `/agentcard/tabs/${enc(tabId)}/payment/${enc(attachmentId)}/order`, {
+      query: { userId: this.#user },
+      body: { orderId, confirmedWithoutOrderId },
+    });
   }
 
   disarmPayment(tabId, attachmentId) {

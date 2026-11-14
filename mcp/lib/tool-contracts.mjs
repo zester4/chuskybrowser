@@ -330,9 +330,23 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'agentcard_enrol',
+    name: 'chusky_pay_confirm_order',
+    description: 'Record the merchant order after the checkout has finished. The order counts as complete only after this call. Pass orderId from the store confirmation page, or confirmedWithoutOrderId true only when the store shows no order number.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Tab identifier' },
+        attachmentId: { type: 'string', description: 'From chusky_pay_arm' },
+        orderId: { type: 'string', description: 'The order number the store shows' },
+        confirmedWithoutOrderId: { type: 'boolean', description: 'true only when the store shows no order number' },
+      },
+      required: ['tabId', 'attachmentId'],
+    },
+  },
+  {
+    name: 'chusky_card_enrol',
     description:
-      'Start storing the user\'s card with AgentCard. Returns has_card when a card is already stored (nothing to do), otherwise a vault link. Send the link to the user unchanged. The user enters the card on AgentCard\'s page. Card numbers never pass through this tool.',
+      'Start storing the user\'s card with chuskybrowser. Returns has_card when a card is already stored (nothing to do), otherwise a vault link. Send the link to the user unchanged. The user enters the card on chuskybrowser\'s page. Card numbers never pass through this tool.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -342,14 +356,14 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'agentcard_cards',
+    name: 'chusky_cards',
     description: 'List the cards stored for this user (brand, last4, expiry). Card numbers are never returned.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
   {
-    name: 'agentcard_buy',
+    name: 'chusky_buy',
     description:
-      'Shop for the user at real stores through AgentCard: products, food delivery, table reservations (action reserve) and flights (action book). Pass the shopper\'s words in ask. Pass product_id or store_id only when the user picked one from a previous result. Set confirm true only when the user said yes to the cart. The response has links for the user: send them exactly as given, never change or summarise them.',
+      'Shop for the user at real stores through chuskybrowser: products, food delivery, table reservations (action reserve) and flights (action book). Pass the shopper\'s words in ask. Pass product_id or store_id only when the user picked one from a previous result. Set confirm true only when the user said yes to the cart. The response has links for the user: send them exactly as given, never change or summarise them.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -364,9 +378,9 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'agentcard_merchants',
+    name: 'chusky_merchants',
     description:
-      'Check whether AgentCard can pay at a store before sending the user there. supported is true (a real purchase went through), false (cannot pay there) or null (not known yet). For direct merchants such as DoorDash, link_status shows whether the user still has to connect.',
+      'Check whether chuskybrowser can pay at a store before sending the user there. supported is true (a real purchase went through), false (cannot pay there) or null (not known yet). For direct merchants such as DoorDash, link_status shows whether the user still has to connect.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -379,7 +393,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'agentcard_placeholder',
+    name: 'chusky_card_placeholder',
     description:
       'The test card to type into a checkout for one of this user\'s stored cards: the card number, security code and expiry that match the card that pays. The real card number is never returned. Use the same cardId as chusky_pay_arm.',
     inputSchema: {
@@ -391,12 +405,12 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'agentcard_presets_list',
-    description: 'List this user\'s spending rules (presets). Limits are enforced by AgentCard before any approval.',
+    name: 'chusky_presets',
+    description: 'List this user\'s spending rules (presets). Limits are enforced by chuskybrowser before any approval.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
   {
-    name: 'agentcard_preset_set',
+    name: 'chusky_preset_set',
     description:
       'Create or change one of the user\'s spending rules. Money is in cents. Rules apply to the next purchase. Use this when the user sets a limit, such as a daily cap or merchants they allow.',
     inputSchema: {
@@ -425,7 +439,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'agentcard_preset_attach',
+    name: 'chusky_preset_attach',
     description: 'Attach one of the user\'s spending rules to one of their cards (default: the first card).',
     inputSchema: {
       type: 'object',
@@ -750,7 +764,19 @@ export function buildRequest(name, args, ctx) {
         auth: 'accessKey',
         responseKind: 'json',
       };
-    case 'agentcard_enrol':
+    case 'chusky_pay_confirm_order': {
+      const body = {};
+      if (args.orderId) body.orderId = args.orderId;
+      if (args.confirmedWithoutOrderId) body.confirmedWithoutOrderId = true;
+      return {
+        method: 'POST',
+        path: `/agentcard/tabs/${encodeURIComponent(args.tabId)}/payment/${encodeURIComponent(args.attachmentId)}/order?${new URLSearchParams({ userId })}`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body,
+      };
+    }
+    case 'chusky_card_enrol':
       return {
         method: 'POST',
         path: '/agentcard/vault/enrol',
@@ -758,42 +784,42 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { userId, addAnother: args.addAnother === true },
       };
-    case 'agentcard_placeholder':
+    case 'chusky_card_placeholder':
       return {
         method: 'GET',
         path: `/agentcard/cards/placeholder?${new URLSearchParams({ userId, ...(args.cardId ? { cardId: args.cardId } : {}) })}`,
         auth: 'accessKey',
         responseKind: 'json',
       };
-    case 'agentcard_cards':
+    case 'chusky_cards':
       return {
         method: 'GET',
         path: `/agentcard/vault/cards?${new URLSearchParams({ userId })}`,
         auth: 'accessKey',
         responseKind: 'json',
       };
-    case 'agentcard_buy': {
+    case 'chusky_buy': {
       const body = { userId };
       for (const key of ['ask', 'threadId', 'confirm', 'new_order', 'product_id', 'store_id']) {
         if (args[key] !== undefined) body[key] = args[key];
       }
       return { method: 'POST', path: '/agentcard/commerce/buy', auth: 'accessKey', responseKind: 'json', body };
     }
-    case 'agentcard_merchants': {
+    case 'chusky_merchants': {
       const params = new URLSearchParams({ userId });
       for (const key of ['kind', 'q', 'limit', 'cursor']) {
         if (args[key] !== undefined && args[key] !== '') params.set(key, String(args[key]));
       }
       return { method: 'GET', path: `/agentcard/merchants?${params}`, auth: 'accessKey', responseKind: 'json' };
     }
-    case 'agentcard_presets_list':
+    case 'chusky_presets':
       return {
         method: 'GET',
         path: `/agentcard/presets?${new URLSearchParams({ userId })}`,
         auth: 'accessKey',
         responseKind: 'json',
       };
-    case 'agentcard_preset_set':
+    case 'chusky_preset_set':
       return {
         method: 'PUT',
         path: `/agentcard/presets/${encodeURIComponent(args.label)}`,
@@ -801,7 +827,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { userId, rules: args.rules },
       };
-    case 'agentcard_preset_attach':
+    case 'chusky_preset_attach':
       return {
         method: 'POST',
         path: `/agentcard/presets/${encodeURIComponent(args.label)}/attach`,

@@ -13,6 +13,6 @@ The package `chuskybrowser-mcp` exposes the REST API as MCP tools. It proxies to
 - **Browse:** `chusky_create_tab`, `chusky_snapshot`, `chusky_navigate`, `chusky_click`, `chusky_type`, `chusky_scroll`, `chusky_screenshot`, `chusky_evaluate`, `chusky_list_tabs`, `chusky_close_tab`, `chusky_import_cookies`, `chusky_wait`, `chusky_viewport`, `chusky_select`, `chusky_upload`, `chusky_dismiss_overlays`, `chusky_page_state`, `chusky_list_downloads`, `chusky_extract`.
 - **People in the loop:** `chusky_viewer_link` (watch or control a tab), `chusky_handoff_start` and `chusky_handoff_release`, `chusky_checkpoint` (hands over only when a person is needed).
 - **Payments:** `chusky_pay_arm`, `chusky_pay_status`, `chusky_pay_disarm`.
-- **AgentCard and debugging:** the `agentcard_*` tools, and `chusky_list_traces`.
+- **Payments and debugging:** the `chusky_card_*`, `chusky_buy`, `chusky_merchants` and `chusky_preset*` tools, and `chusky_list_traces`.
 
 Send any `url` or `controlUrl` the tools return to the user unchanged. Never open or act on a link yourself.

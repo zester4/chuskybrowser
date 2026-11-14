@@ -62,8 +62,8 @@ written in plain text on a shared machine.
 
 - Browser: the 11 existing tools, plus `chusky_handoff_start` and `chusky_handoff_release`.
 - Payments: `chusky_pay_arm`, `chusky_pay_status`, `chusky_pay_disarm`.
-- AgentCard: `agentcard_enrol`, `agentcard_cards`, `agentcard_placeholder`, `agentcard_buy`, `agentcard_merchants`,
-  `agentcard_presets_list`, `agentcard_preset_set`, `agentcard_preset_attach`.
+- AgentCard: `chusky_card_enrol`, `chusky_cards`, `chusky_card_placeholder`, `chusky_buy`, `chusky_merchants`,
+  `chusky_presets`, `chusky_preset_set`, `chusky_preset_attach`.
 
 Not exposed as tools, on purpose: the raw purchase request (it needs the processor's own
 request, which the model should not build) and the webhook routes.

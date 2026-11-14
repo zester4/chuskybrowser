@@ -5,30 +5,39 @@ description: Let an agent buy on a user's behalf, with the user approving each p
 
 Payments use the user's own card. The agent never sees the card number. Each purchase is approved by the user on their device with a passkey.
 
+## Store a card
+
+```js
+import { forUser } from 'chuskybrowser-sdk';
+
+const browser = forUser(userId);
+const enrol = await browser.enrolCard();
+// Send the link in the response to the user. They enter their card there.
+```
+
+Check whether a card is stored:
+
+```js
+const cards = await browser.listCards();
+```
+
 ## Test that your agent can pay
 
-AgentCard's demo store lets you check the whole flow before you use real customers:
+Use the test store to check the whole flow before you use real customers:
 
 - Store: `https://shop.agentcard.sh`. Pick an item and press **Buy now**, then pay with the test card `4242 4242 4242 4242`, any future expiry, and any CVC.
-- The agent opens the store, the card request pauses, you approve the link on your device, and the store confirms the order.
-- The script `agentcard/scripts/firefox-store-purchase.mjs` runs this in Firefox. It needs a sandbox user with a stored card.
-
-The SDK does not yet have payment methods, so these calls use the REST API directly. Send them from your backend with the access key in the `Authorization` header.
+- The agent opens the store, the card request pauses, the user approves the link on their device, and the store confirms the order.
 
 ## 1. Arm payment on the checkout page
 
-```
-POST /agentcard/tabs/{tabId}/payment
-```
-
-```json
-{
-  "userId": "customer-42",
-  "merchant": "Shop Example",
-  "amount": 2306,
-  "currency": "usd",
-  "checkoutOrigin": "https://shop.example.com"
-}
+```js
+const armed = await browser.armPayment(tabId, {
+  merchant: 'Shop Example',
+  amount: 2306,          // $23.06, in the smallest unit of the currency
+  currency: 'usd',
+  checkoutOrigin: 'https://shop.example.com',
+});
+// armed.attachmentId: keep it for the next steps
 ```
 
 | Field | Meaning |
@@ -38,21 +47,16 @@ POST /agentcard/tabs/{tabId}/payment
 | `currency` | A lowercase three-letter code, such as `usd`. |
 | `checkoutOrigin` | The address of the checkout page, starting with `https://`. |
 | `cardId` | Optional. Which stored card to use. If you leave it out, the first card is used. |
-| `psp` | Optional. The store's processor, such as `braintree`, `square`, `worldpay`, `bambora` or `mercado_pago`. Send it for a store that needs approval before Pay. Leave it out for Stripe and most other stores. |
-
-The response includes an `attachmentId`. Keep it for the next steps.
 
 Once armed, the checkout's card request waits for the user's approval instead of going through.
 
-**Approve before Pay.** When you send `psp`, the response also includes `approvalUrl` and `preparationId`. Send the user the link straight away. Wait until the user has approved (step 2 shows `ready`), then have the agent press Pay. The card request then binds to that approval, and the user is not asked a second time.
-
 ## 2. Send the user the approval link
 
-```
-GET /agentcard/tabs/{tabId}/payment/{attachmentId}?userId=customer-42
+```js
+const status = await browser.paymentStatus(tabId, armed.attachmentId);
 ```
 
-Once the card request is paused, the response includes an `approvalUrl`. Send it to the user unchanged. They open it on their device and approve with their passkey.
+When the card request is paused, the status includes an `approvalUrl`. Send it to the user unchanged. They open it on their device and approve with their passkey.
 
 The `phase` field tells you where things stand:
 
@@ -60,24 +64,20 @@ The `phase` field tells you where things stand:
 - `pending`: the card request is paused, waiting for approval.
 - `completed`: the purchase went through.
 
-## 3. Confirm the order
+## 3. Record the order
 
-An approved payment is not a finished order. Once the page has finished, read the merchant's own confirmation page, then record the order:
+An approved payment is not a finished order. Once the checkout has finished, read the store's confirmation page, then record the order:
 
-```
-POST /agentcard/tabs/{tabId}/payment/{attachmentId}/order?userId=customer-42
-```
-
-```json
-{ "orderId": "ORD-10482" }
+```js
+await browser.confirmOrder(tabId, armed.attachmentId, { orderId: 'ORD-10482' });
 ```
 
-Send `"confirmedWithoutOrderId": true` instead of `orderId` only when the store shows no order number. The order counts as complete only after this call. `GET /agentcard/tabs/{tabId}/payment/{attachmentId}` shows it as `merchantOrder`.
+If the store shows no order number, pass `{ confirmedWithoutOrderId: true }` instead. The order counts as complete only after this call.
 
 ## 4. Cancel payment
 
-```
-DELETE /agentcard/tabs/{tabId}/payment/{attachmentId}?userId=customer-42
+```js
+await browser.disarmPayment(tabId, armed.attachmentId);
 ```
 
 Use this if the user decides not to buy, or the task is cancelled.

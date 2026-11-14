@@ -150,35 +150,39 @@
         "description": "Stop paying on a tab"
       },
       {
-        "name": "agentcard_enrol",
+        "name": "chusky_pay_confirm_order",
+        "description": "Record the merchant order after checkout"
+      },
+      {
+        "name": "chusky_card_enrol",
         "description": "Start storing the user's card with AgentCard"
       },
       {
-        "name": "agentcard_cards",
+        "name": "chusky_cards",
         "description": "List the cards stored for this user (brand, last4, expiry)"
       },
       {
-        "name": "agentcard_buy",
+        "name": "chusky_buy",
         "description": "Shop for the user at real stores through AgentCard: products, food delivery, table reservations (action reserve) and fli"
       },
       {
-        "name": "agentcard_merchants",
+        "name": "chusky_merchants",
         "description": "Check whether AgentCard can pay at a store before sending the user there"
       },
       {
-        "name": "agentcard_placeholder",
+        "name": "chusky_card_placeholder",
         "description": "The test card to type into a checkout for a stored card (number, security code, expiry that match the card that pays)"
       },
       {
-        "name": "agentcard_presets_list",
+        "name": "chusky_presets",
         "description": "List this user's spending rules (presets)"
       },
       {
-        "name": "agentcard_preset_set",
+        "name": "chusky_preset_set",
         "description": "Create or change one of the user's spending rules"
       },
       {
-        "name": "agentcard_preset_attach",
+        "name": "chusky_preset_attach",
         "description": "Attach one of the user's spending rules to one of their cards (default: the first card)."
       },
       {

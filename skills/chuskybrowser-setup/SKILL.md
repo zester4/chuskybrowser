@@ -77,10 +77,10 @@ Never ask the user to type a password in chat. The handoff exists so they type i
 The user saves their card once on AgentCard's page. The card number never reaches the
 agent or this server. Each payment needs the user's approval on their own device.
 
-1. Check for a card: `agentcard_cards`. If there is none, call `agentcard_enrol` and send
+1. Check for a card: `chusky_cards`. If there is none, call `chusky_card_enrol` and send
    the returned link to the user, unchanged. Never open it or change it.
 2. Shop, or pay on a page you control:
-   - Stores and bookings: `agentcard_merchants` first, then `agentcard_buy`. Pass the
+   - Stores and bookings: `chusky_merchants` first, then `chusky_buy`. Pass the
      shopper's words as `ask`. Set `confirm` only after the user says yes to the cart.
    - Any checkout page: open it in a tab, then `chusky_pay_arm` with the merchant,
      the most the user can be charged in cents, and the currency.
@@ -88,7 +88,7 @@ agent or this server. Each payment needs the user's approval on their own device
    The page's card request waits until they approve with their passkey.
 4. Stop with `chusky_pay_disarm` when the checkout is done.
 
-Limits: set them with `agentcard_preset_set` (for example a weekly cap or allowed
+Limits: set them with `chusky_preset_set` (for example a weekly cap or allowed
 merchants). AgentCard enforces them before any approval.
 
 ## Handing a tab to the user
