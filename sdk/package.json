@@ -1,0 +1,26 @@
+{
+  "name": "chuskybrowser-sdk",
+  "version": "1.19.0",
+  "description": "Client SDK for chuskybrowser: open tabs, read pages, and use the login vault from your app or agent.",
+  "type": "module",
+  "main": "chusky-client.mjs",
+  "exports": {
+    ".": "./chusky-client.mjs"
+  },
+  "files": [
+    "chusky-client.mjs",
+    "lib-env.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zester4/chuskybrowser.git",
+    "directory": "sdk"
+  },
+  "homepage": "https://github.com/zester4/chuskybrowser#readme",
+  "keywords": ["browser", "automation", "ai-agent", "chuskybrowser", "sdk", "vault"]
+}
