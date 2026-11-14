@@ -14,7 +14,8 @@ import { BASE, ACCESS_KEY } from './lib-env.mjs';
 import { ChuskyClient, ChuskyError } from '../skills/chuskybrowser-setup/scripts/chusky-client.mjs';
 
 const userId = process.env.CHUSKY_USER_ID || `sdk-live-${randomUUID()}`;
-const client = new ChuskyClient({ baseUrl: BASE, accessKey: ACCESS_KEY, userId });
+// apiKey: '' forces self-hosted mode, so a customer key in .env is not sent to this server.
+const client = new ChuskyClient({ apiKey: '', baseUrl: BASE, accessKey: ACCESS_KEY, userId });
 const SECRET = `pw-${randomUUID()}`;
 const USERNAME = `user-${randomUUID().slice(0, 8)}`;
 let failures = 0;
