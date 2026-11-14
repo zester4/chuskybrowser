@@ -155,7 +155,8 @@ const app = express();
 const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: CONFIG.agentcard.stateFile, environment: CONFIG.agentcard.environment, log });
 
 // Tab close times, sent to the frontend so minutes are recorded exactly. Retried; never blocks a request.
-const usageReporter = createUsageReporter({ frontendUrl: process.env.CHUSKY_FRONTEND_URL, secret: process.env.CHUSKY_INTERNAL_SECRET, log });
+const usageReporter = createUsageReporter({ frontendUrl: process.env.CHUSKY_FRONTEND_URL, secret: process.env.CHUSKY_INTERNAL_SECRET, queueFile: process.env.CHUSKY_USAGE_QUEUE_FILE || null, log });
+usageReporter.resume(); // send anything saved before a restart
 
 /**
  * @openapi

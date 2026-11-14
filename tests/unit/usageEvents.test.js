@@ -1,5 +1,8 @@
 import { jest } from '@jest/globals';
 import { createUsageReporter } from '../../lib/usage-events.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const instant = async () => {};
 
@@ -47,5 +50,25 @@ describe('usage event delivery', () => {
     const r = createUsageReporter({ frontendUrl: null, secret: '', fetchImpl, sleep: instant });
     await expect(r.report({ type: 'usage' })).resolves.toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('usage event queue survives a restart', () => {
+  test('an undelivered event is saved, then delivered by a new reporter after restart', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-q-'));
+    const queueFile = path.join(dir, 'queue.json');
+    const down = async () => new Response('', { status: 503 });
+    const first = createUsageReporter({ frontendUrl: 'https://front.example', secret: 's', fetchImpl: down, sleep: instant, maxAttempts: 2, queueFile });
+    await first.report({ type: 'tab_close', accountId: 'acc', tabId: 't9', closedAt: '2026-11-14T00:00:00.000Z' });
+    expect(JSON.parse(fs.readFileSync(queueFile, 'utf8'))).toHaveLength(0);
+
+    const saved = [];
+    const up = async (url, init) => { saved.push(JSON.parse(init.body)); return new Response('{}', { status: 200 }); };
+    fs.writeFileSync(queueFile, JSON.stringify([{ event: { id: 'evt-1', at: '2026-11-14T00:00:00.000Z', type: 'tab_close', accountId: 'acc', tabId: 't9' }, attempts: 1 }]));
+    const second = createUsageReporter({ frontendUrl: 'https://front.example', secret: 's', fetchImpl: up, sleep: instant, queueFile });
+    expect(second.stats().restored).toBe(1);
+    await second.resume();
+    expect(saved.map((e) => e.id)).toEqual(['evt-1']);
+    expect(JSON.parse(fs.readFileSync(queueFile, 'utf8'))).toHaveLength(0);
   });
 });
