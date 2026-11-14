@@ -20,7 +20,7 @@ The login vault stores a user's site logins, encrypted. The browser fills them i
 ## Save a login
 
 ```js
-import { forUser } from 'chuskybrowser';
+import { forUser } from 'chuskybrowser-sdk';
 
 // In your own server code, after the user has entered their details on your settings page.
 const browser = forUser(userIdFromYourSession);
@@ -66,7 +66,7 @@ It refuses to run on any page outside the login's allowed hosts. It checks this 
 If the site asks for a verification code, `fillLogin` throws an error with the code `verification_code_needed`. The tab is already handed to the person in the live view. Ask the person for the code, and wait for them to finish. Do not retry the fill.
 
 ```js
-import { ChuskyError } from 'chuskybrowser';
+import { ChuskyError } from 'chuskybrowser-sdk';
 
 try {
   await browser.fillLogin(tab.tabId, { loginId });

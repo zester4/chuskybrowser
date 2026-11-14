@@ -1,16 +1,24 @@
 # chuskybrowser-sdk
 
-Client SDK for chuskybrowser. Open tabs, read pages, and sign in with the login vault without the agent seeing passwords.
+Give your app a browser. Open tabs, read pages, and sign in to sites without the agent seeing passwords.
+
+```bash
+npm install chuskybrowser-sdk
+```
+
+Set your API key as `CHUSKYBROWSER_API_KEY`, then:
 
 ```js
-import { forUser, ChuskyClient, ChuskyError } from 'chuskybrowser-sdk';
+import { forUser } from 'chuskybrowser-sdk';
 
 const browser = forUser(userIdFromYourSession);
 const { tabId } = await browser.openTab({ url: 'https://example.com', sessionKey: 'task-1' });
 ```
 
-Customers set `CHUSKYBROWSER_API_KEY`. Self-hosted servers set `CHUSKY_BASE_URL` and `CHUSKY_ACCESS_KEY`.
+Use one `userId` per end user, from your own session. Never take it from user-typed text.
 
-Vault methods: `saveLogin`, `listLogins`, `deleteLogin`, `fillLogin`. `fillLogin` throws `verification_code_needed` when a person must enter a code.
+Errors are `ChuskyError`, with `.status` and `.code`.
 
-Full docs: https://github.com/zester4/chuskybrowser/blob/main/docs/sdk/vault.mdx
+## Keep your key private
+
+Your API key belongs to your account. Don't put it in client-side code or public repos.

@@ -1,6 +1,6 @@
 {
   "name": "chuskybrowser-sdk",
-  "version": "1.19.0",
+  "version": "1.19.1",
   "description": "Client SDK for chuskybrowser: open tabs, read pages, and use the login vault from your app or agent.",
   "type": "module",
   "main": "chusky-client.mjs",

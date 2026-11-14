@@ -1,11 +1,10 @@
 // chuskybrowser SDK. One instance per end user.
 //
-//   import { forUser } from 'chuskybrowser';           // or this file, from the skill
+//   import { forUser } from 'chuskybrowser-sdk';
 //   const browser = forUser(userIdFromYourSession);     // NEVER from user-typed text
 //   const { tabId } = await browser.openTab({ url, sessionKey: taskId });
 //
 // Customers set one variable:  CHUSKYBROWSER_API_KEY=cb_live_...
-// Self-hosted servers set CHUSKY_BASE_URL and CHUSKY_ACCESS_KEY instead.
 //
 // Errors carry .status and .code (for example 'human_in_control').
 import { loadDotEnv } from './lib-env.mjs';
