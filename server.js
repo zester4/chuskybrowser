@@ -10,6 +10,7 @@ import { getSearchFallbacks } from './lib/search-fallbacks.js';
 import { hasGoogleOrganicResults } from './lib/google-serp.js';
 import { loadConfig } from './lib/config.js';
 import { createAgentCardService } from './agentcard/src/index.js';
+import { createUsageReporter } from './lib/usage-events.js';
 import { sendAgentCardError } from './agentcard/src/http.js';
 import { randomUUID as agentcardRandomUUID } from 'node:crypto';
 import { contextIdentityOptions, launchLocale } from './lib/browser-identity.js';
@@ -152,6 +153,9 @@ const app = express();
 // AgentCard, state and service. Boot never fails when AgentCard is not configured:
 // the routes answer 503 until credentials are set.
 const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: CONFIG.agentcard.stateFile, environment: CONFIG.agentcard.environment, log });
+
+// Tab close times, sent to the frontend so minutes are recorded exactly. Retried; never blocks a request.
+const usageReporter = createUsageReporter({ frontendUrl: process.env.CHUSKY_FRONTEND_URL, secret: process.env.CHUSKY_INTERNAL_SECRET, log });
 
 /**
  * @openapi
@@ -2821,6 +2825,9 @@ function destroyTab(session, tabId, reason, userId) {
       if (group.size === 0) session.tabGroups.delete(listItemId);
       refreshActiveTabsGauge();
       if (reason) tabsDestroyedTotal.labels(reason).inc();
+      // userId is "accountId:endUserId" for customer tabs. Report the real close time for billing.
+      const accountId = typeof userId === 'string' && userId.includes(':') ? userId.split(':')[0] : null;
+      if (accountId) usageReporter.report({ type: 'tab_close', accountId, tabId, closedAt: new Date().toISOString(), reason: reason || 'unknown' });
       pluginEvents.emit('tab:destroyed', { userId: userId || null, tabId, reason: reason || 'unknown' });
       return true;
     }

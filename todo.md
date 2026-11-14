@@ -18,6 +18,14 @@ production; the browser repo's `public` remote holds the last pushed backend com
 - Payment on a checkout page in AgentCard's test environment, with the user's approval:
   8 of 8 (camoufox-pay-check.mjs). This ran directly, not through the bridge.
 
+## Minutes (built 2026-11-14, no pricing yet)
+
+- Tab close times are sent to the frontend when the browser server destroys a tab (crash, timeout, lock,
+  reaper), with the real close time. Delivery retries with backoff, and each event has an id
+  (`lib/usage-events.js`). After the last retry an event is dropped and counted in `stats().dropped`.
+- The frontend records browser seconds on every close, and shows browser minutes for the month.
+- Still open: the queue is in memory, so a restart loses events not yet delivered. Counters only show it.
+
 ## Audit against the AgentCard docs (2026-11-13)
 
 Done and tested: vault sessions (open, external_user_id, steps, expires_in), vault polling (pending, linked,
