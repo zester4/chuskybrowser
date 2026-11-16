@@ -59,9 +59,18 @@ if (tabId) {
   report.check('opened the checkboxes page', nav.status === 200, `HTTP ${nav.status}`);
   await wait(1500);
 
-  const tick = await call(`/tabs/${tabId}/click`, { method: 'POST', body: { userId: user, selector: 'form#checkboxes input[type="checkbox"]' } });
-  report.check('ticked the first checkbox', tick.status === 200, `HTTP ${tick.status}`);
-  await wait(1500);
+  // Read the page's element refs, then click every checkbox by its ref. Refs come from the
+  // snapshot text, where each interactive element appears as "[checkbox e5]".
+  const snap = await call(`/tabs/${tabId}/snapshot?userId=${enc(user)}`);
+  const refs = [...String(snap.data?.snapshot ?? '').matchAll(/\[checkbox\s+(e\d+)\]/g)].map((m) => m[1]);
+  report.check('found the checkboxes on the page', refs.length >= 2, `${refs.length} checkbox ref(s): ${refs.join(', ') || 'none'}`);
+
+  for (const ref of refs) {
+    const tick = await call(`/tabs/${tabId}/click`, { method: 'POST', body: { userId: user, ref } });
+    report.check(`clicked checkbox ${ref}`, tick.status === 200, `HTTP ${tick.status}`);
+    await wait(800);
+  }
+  await wait(1000);
 }
 
 // 5. Close the session so the trace is written
