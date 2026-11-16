@@ -228,6 +228,22 @@
       {
         "name": "chusky_list_traces",
         "description": "List recorded session traces for the current user, for debugging a run."
+      },
+      {
+        "name": "chusky_session_status",
+        "description": "Check what is still open for the current user: the tab ids to continue with, their URLs and titles, who holds each tab, and when the idle session closes. Use this after a restart or a dropped connection, before opening new tabs."
+      },
+      {
+        "name": "chusky_proxy_set",
+        "description": "Choose where the current user's traffic exits: a two-letter country (for example us or gb), optional state, city or zip, and how long one IP is kept (1 to 1440 minutes). Applies to the next session the user opens. Send no fields to go back to the default."
+      },
+      {
+        "name": "chusky_proxy_usage",
+        "description": "Show how many bytes the current user's traffic has used through the proxy, and how many requests."
+      },
+      {
+        "name": "chusky_trace_replay_link",
+        "description": "Create a short-lived link that opens a recorded session trace in the trace viewer, step by step. Send the link to the user unchanged."
       }
     ]
   },

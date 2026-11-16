@@ -582,6 +582,43 @@ export const TOOL_DEFS = [
     description: 'List recorded session traces for the current user, for debugging a run.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
+  {
+    name: 'chusky_session_status',
+    description: 'Check what is still open for the current user: the tab ids to continue with, their URLs and titles, who holds each tab, and when the idle session closes. Use this after a restart or a dropped connection, before opening new tabs.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'chusky_proxy_set',
+    description: 'Choose where the current user\'s traffic exits: a two-letter country (for example us or gb), optional state, city or zip, and how long one IP is kept (1 to 1440 minutes). Applies to the next session the user opens. Send no fields to go back to the default.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: { type: 'string', description: 'Two-letter country code.' },
+        state: { type: 'string' },
+        city: { type: 'string' },
+        zip: { type: 'string' },
+        sessionDurationMinutes: { type: 'integer', minimum: 1, maximum: 1440 },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'chusky_proxy_usage',
+    description: 'Show how many bytes the current user\'s traffic has used through the proxy, and how many requests.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'chusky_trace_replay_link',
+    description: 'Create a short-lived link that opens a recorded session trace in the trace viewer, step by step. Send the link to the user unchanged.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Trace file name from chusky_list_traces.' },
+        ttlMinutes: { type: 'integer', minimum: 1, maximum: 60, description: 'Link lifetime. Default 15.' },
+      },
+      required: ['filename'],
+    },
+  },
 ];
 
 /** Quick name → def lookup. */
@@ -919,6 +956,41 @@ export function buildRequest(name, args, ctx) {
         path: `/sessions/${encodeURIComponent(userId)}/traces`,
         auth: 'accessKey',
         responseKind: 'json',
+      };
+    case 'chusky_session_status':
+      return {
+        method: 'GET',
+        path: `/sessions/${encodeURIComponent(userId)}/status`,
+        auth: 'accessKey',
+        responseKind: 'json',
+      };
+    case 'chusky_proxy_set': {
+      const geo = {};
+      for (const key of ['country', 'state', 'city', 'zip', 'sessionDurationMinutes']) {
+        if (args[key] !== undefined && args[key] !== '') geo[key] = args[key];
+      }
+      return {
+        method: 'POST',
+        path: `/sessions/${encodeURIComponent(userId)}/proxy`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: geo,
+      };
+    }
+    case 'chusky_proxy_usage':
+      return {
+        method: 'GET',
+        path: `/sessions/${encodeURIComponent(userId)}/proxy-usage`,
+        auth: 'accessKey',
+        responseKind: 'json',
+      };
+    case 'chusky_trace_replay_link':
+      return {
+        method: 'POST',
+        path: `/sessions/${encodeURIComponent(userId)}/traces/${encodeURIComponent(args.filename)}/replay`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: args.ttlMinutes ? { ttlMs: args.ttlMinutes * 60 * 1000 } : {},
       };
     default:
       throw new Error(`Unknown tool: ${name}`);

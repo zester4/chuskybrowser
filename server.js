@@ -15,7 +15,10 @@ import { createVault, parseMasterKey } from './lib/vault.js';
 import { sendAgentCardError } from './agentcard/src/http.js';
 import { randomUUID as agentcardRandomUUID } from 'node:crypto';
 import { contextIdentityOptions, launchLocale } from './lib/browser-identity.js';
-import { normalizePlaywrightProxy, createProxyPool, buildProxyUrl } from './lib/proxy.js';
+import { normalizePlaywrightProxy, createProxyPool, buildProxyUrl, pickProxyGeo } from './lib/proxy.js';
+import { createProxyUsageStore } from './lib/proxy-usage.js';
+import { createPlanLimits, resolvePlans } from './lib/plan-limits.js';
+import { join as pathJoin } from 'node:path';
 import { createFlyHelpers } from './lib/fly.js';
 import { createPluginEvents, loadPlugins, typeEventPayload } from './lib/plugins.js';
 import { requireAuth, accessKeyMiddleware, timingSafeCompare as _timingSafeCompare, isLoopbackAddress as _isLoopbackAddress } from './lib/auth.js';
@@ -48,6 +51,9 @@ import {
   ensureTracesDir, resolveTracePath, tracePathFor, makeTraceFilename,
   listUserTraces, statTrace, deleteTrace, sweepOldTraces,
 } from './lib/tracing.js';
+import {
+  makeReplaySecret, signReplayToken, verifyReplayToken, replayTtlMs, traceViewerDir,
+} from './lib/replay.js';
 
 import {
   initMetrics, getRegister, isMetricsEnabled, createMetric,
@@ -1670,6 +1676,15 @@ const MAX_TABS_GLOBAL = CONFIG.maxTabsGlobal;
 const HANDLER_TIMEOUT_MS = CONFIG.handlerTimeoutMs;
 const NEW_PAGE_TIMEOUT_MS = CONFIG.newPageTimeoutMs;
 const MAX_CONCURRENT_PER_USER = CONFIG.maxConcurrentPerUser;
+// Limits per plan. The standard plan takes MAX_CONCURRENT_PER_USER and MAX_TABS_PER_SESSION,
+// so existing installs keep their current limits.
+const planLimits = createPlanLimits({
+  plans: resolvePlans(CONFIG.planLimitsOverrides, {
+    standardOverride: { maxConcurrentPerUser: CONFIG.maxConcurrentPerUser, maxTabsPerSession: CONFIG.maxTabsPerSession },
+  }),
+  defaultPlan: CONFIG.defaultPlan,
+  filePath: pathJoin(CONFIG.profileDir, 'plans.json'),
+});
 const PAGE_CLOSE_TIMEOUT_MS = 5000;
 const PAGE_FORCE_CLOSE_TIMEOUT_MS = 1000;
 const NAVIGATE_TIMEOUT_MS = CONFIG.navigateTimeoutMs;
@@ -1791,7 +1806,7 @@ async function withUserLimit(userId, operation) {
     state = { active: 0, queue: [] };
     userConcurrency.set(key, state);
   }
-  if (state.active >= MAX_CONCURRENT_PER_USER) {
+  if (state.active >= planLimits.limitsFor(key).maxConcurrentPerUser) {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('User concurrency limit reached, try again')), 30000);
       state.queue.push(() => { clearTimeout(timer); resolve(); });
@@ -1845,6 +1860,8 @@ function getHostOS() {
 
 // Proxy strategy for outbound browsing.
 const proxyPool = createProxyPool(CONFIG.proxy);
+// Per-user proxy location and byte totals. Saved beside the profiles, on the same volume.
+const proxyUsage = createProxyUsageStore({ filePath: pathJoin(CONFIG.profileDir, 'proxy-usage.json') });
 
 if (proxyPool) {
   log('info', 'proxy pool created', {
@@ -2566,7 +2583,7 @@ async function getSession(userId, { trace = false } = {}) {
       };
       let sessionProxy = null;
       if (proxyPool?.canRotateSessions) {
-        sessionProxy = proxyPool.getNext(`ctx-${key}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`);
+        sessionProxy = proxyPool.getNext(`ctx-${key}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`, proxyUsage.getGeo(key));
         contextOptions.proxy = normalizePlaywrightProxy(sessionProxy);
         log('info', 'session proxy assigned', { userId: key, sessionId: sessionProxy.sessionId });
       } else if (proxyPool) {
@@ -2591,6 +2608,15 @@ async function getSession(userId, { trace = false } = {}) {
       }
 
       const created = { context, tabGroups: new Map(), pageLeases: new Set(), lastAccess: Date.now(), proxySessionId: sessionProxy?.sessionId || null, tracePath };
+      if (sessionProxy) {
+        // Meter bytes per user. Playwright reports sizes for each finished request.
+        context.on('requestfinished', (request) => {
+          request.sizes().then((s) => {
+            const total = (s.requestBodySize || 0) + (s.requestHeadersSize || 0) + (s.responseBodySize || 0) + (s.responseHeadersSize || 0);
+            proxyUsage.recordBytes(key, total);
+          }).catch(() => {});
+        });
+      }
       sessions.set(key, created);
       await pluginEvents.emitAsync('session:created', { userId: key, context });
       log('info', 'session created', {
@@ -4130,7 +4156,7 @@ app.post('/tabs', async (req, res) => {
       for (const group of session.tabGroups.values()) totalTabs += group.size;
       
       // Recycle oldest tab when limits are reached instead of rejecting
-      if (totalTabs >= MAX_TABS_PER_SESSION || getTotalTabCount() >= MAX_TABS_GLOBAL) {
+      if (totalTabs >= planLimits.limitsFor(normalizeUserId(userId)).maxTabsPerSession || getTotalTabCount() >= MAX_TABS_GLOBAL) {
         const recycled = await recycleOldestTab(session, req.reqId, userId);
         if (!recycled) {
           throw Object.assign(new Error('Maximum tabs per session reached'), { statusCode: 429 });
@@ -5809,6 +5835,49 @@ app.post('/tabs/:tabId/upload', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 // Login vault routes. Passwords go in once and are never returned.
+/**
+ * @openapi
+ * /vault/logins:
+ *   post:
+ *     tags: [Sessions]
+ *     summary: Save a login to the vault
+ *     description: Stores a username and password, encrypted, for one user. The password is never returned by any route. allowedHosts limits which sites the login can be filled into.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, site, password]
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               site:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               label:
+ *                 type: string
+ *               allowedHosts:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: Saved login, without the password.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Missing or invalid fields, or the vault is not configured.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/vault/logins', express.json({ limit: '16kb' }), (req, res) => {
   if (!vaultReady(res)) return;
   const { userId, site, username, password, label, allowedHosts } = req.body || {};
@@ -5822,6 +5891,38 @@ app.post('/vault/logins', express.json({ limit: '16kb' }), (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /vault/logins:
+ *   get:
+ *     tags: [Sessions]
+ *     summary: List saved logins for a user
+ *     description: Lists the user's saved logins. Passwords are never included.
+ *     parameters:
+ *       - name: userId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Saved logins.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 logins:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: userId missing.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get('/vault/logins', (req, res) => {
   if (!vaultReady(res)) return;
   const userId = req.query.userId;
@@ -5829,6 +5930,40 @@ app.get('/vault/logins', (req, res) => {
   res.json({ logins: vault.list(normalizeUserId(userId)) });
 });
 
+/**
+ * @openapi
+ * /vault/logins/{loginId}:
+ *   delete:
+ *     tags: [Sessions]
+ *     summary: Delete a saved login
+ *     parameters:
+ *       - name: loginId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: userId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Deleted.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *       404:
+ *         description: No such login for this user.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.delete('/vault/logins/:loginId', (req, res) => {
   if (!vaultReady(res)) return;
   const userId = req.query.userId;
@@ -5850,6 +5985,63 @@ const LOGIN_FIELDS = {
 };
 const MAX_LOGIN_STEPS = 4;
 
+/**
+ * @openapi
+ * /tabs/{tabId}/vault/fill:
+ *   post:
+ *     tags: [Interaction]
+ *     summary: Fill a saved login into the tab's sign-in form
+ *     description: The password goes from the vault to the page and is never returned. The tab must be on an allowed host for the login, checked at every step. A page that asks for a code or a check returns status needs_code, and a person can finish it through handoff.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, loginId]
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               loginId:
+ *                 type: string
+ *               submit:
+ *                 type: boolean
+ *               handoff:
+ *                 type: boolean
+ *               idleMs:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Fill result, with the status of the sign-in.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       404:
+ *         description: Tab or login not found, or the page is not an allowed host.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: A person holds the tab (human_in_control).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       429:
+ *         description: This login was filled too often in the last minute.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/tabs/:tabId/vault/fill', express.json({ limit: '4kb' }), async (req, res) => {
   if (!vaultReady(res)) return;
   const blocked = agentActionBlock(req.params.tabId);
@@ -8105,6 +8297,375 @@ app.delete('/sessions/:userId/traces/:filename', authMiddleware(), async (req, r
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+// --- Plan assignment (trusted callers only) ---
+
+/**
+ * @openapi
+ * /internal/users/{userId}/plan:
+ *   post:
+ *     tags: [Sessions]
+ *     summary: Set a user's capacity plan
+ *     description: Sets which plan a user's limits come from. Only the billing service may call this. It must send the internal secret in the x-chusky-internal header. Customer API keys cannot change a plan. Route is off when no internal secret is configured.
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: x-chusky-internal
+ *         in: header
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [plan]
+ *             properties:
+ *               plan:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Plan set.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 plan:
+ *                   type: string
+ *                 limits:
+ *                   type: object
+ *       400:
+ *         description: Unknown plan.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Route off, or wrong secret.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.post('/internal/users/:userId/plan', express.json({ limit: '2kb' }), (req, res) => {
+  const secret = CONFIG.internalSecret;
+  const sent = String(req.get('x-chusky-internal') || '');
+  if (!secret || !_timingSafeCompare(sent, secret)) return res.status(404).json({ error: 'not found' });
+  const userId = normalizeUserId(req.params.userId);
+  const name = String(req.body?.plan || '');
+  if (!planLimits.setPlan(userId, name)) {
+    return res.status(400).json({ error: `unknown plan; use one of: ${planLimits.names().join(', ')}` });
+  }
+  res.json({ plan: name, limits: planLimits.limitsFor(userId) });
+});
+
+// --- Reconnect: what is still open for a user ---
+
+/**
+ * @openapi
+ * /sessions/{userId}/status:
+ *   get:
+ *     tags: [Sessions]
+ *     summary: Find the open tabs for a user after a reconnect
+ *     description: Use this after a client restart or a dropped connection. It lists the user's open session and every tab in it, with the tab id to use in later calls, the URL and title, who holds the tab, and when the idle session will close. Nothing is changed. The browser keeps running between client connections, so the client can continue with the same tab ids.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session state. active is false when the user has no open session.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 active:
+ *                   type: boolean
+ *                 sessionKeys:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 tabs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       tabId:
+ *                         type: string
+ *                       sessionKey:
+ *                         type: string
+ *                       url:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *                       control:
+ *                         type: object
+ *                         description: mode is agent or human. For human, until is the expiry time in ms.
+ *                 lastActivityAt:
+ *                   type: integer
+ *                   nullable: true
+ *                 idleCloseAt:
+ *                   type: integer
+ *                   nullable: true
+ *                   description: Time in ms when the session closes if nothing else happens.
+ *                 proxy:
+ *                   type: object
+ *                   description: Proxy location settings and usage totals for this user, when a proxy is configured.
+ */
+app.get('/sessions/:userId/status', authMiddleware(), async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.userId);
+    const session = sessions.get(userId);
+    const proxy = proxyPool ? { geo: proxyUsage.getGeo(userId), usage: proxyUsage.getUsage(userId) } : undefined;
+    if (!session) return res.json({ active: false, sessionKeys: [], tabs: [], lastActivityAt: null, idleCloseAt: null, proxy });
+
+    const tabs = [];
+    const sessionKeys = [];
+    for (const [sessionKey, group] of session.tabGroups) {
+      sessionKeys.push(sessionKey);
+      for (const [tabId, tabState] of group) {
+        const page = tabState.page;
+        tabs.push({
+          tabId,
+          sessionKey,
+          url: page?.isClosed?.() ? '' : (page?.url?.() || ''),
+          title: page && !page.isClosed?.() ? await page.title().catch(() => '') : '',
+          control: getControl(tabId),
+        });
+      }
+    }
+    const idleCloseAt = session.lastAccess + CONFIG.sessionTimeoutMs;
+    res.json({
+      active: true,
+      sessionKeys,
+      tabs,
+      lastActivityAt: session.lastAccess,
+      idleCloseAt,
+      plan: planLimits.limitsFor(userId),
+      proxy,
+    });
+  } catch (err) {
+    log('error', 'session status failed', { reqId: req.reqId, error: err.message });
+    handleRouteError(err, req, res);
+  }
+});
+
+// --- Per-user proxy location and usage ---
+
+/**
+ * @openapi
+ * /sessions/{userId}/proxy:
+ *   post:
+ *     tags: [Sessions]
+ *     summary: Set the proxy location for a user
+ *     description: Sets the country, state, city, zip and session length used the next time a proxied session is created for this user. Send an empty body to clear the settings. Changes do not move a session that is already open; close the session to apply them now.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               country:
+ *                 type: string
+ *                 description: Two-letter country code, for example us or gb.
+ *               state:
+ *                 type: string
+ *               city:
+ *                 type: string
+ *               zip:
+ *                 type: string
+ *               sessionDurationMinutes:
+ *                 type: integer
+ *                 description: How long one proxy IP is kept. 1 to 1440.
+ *     responses:
+ *       200:
+ *         description: Settings in effect for this user.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 proxy:
+ *                   type: object
+ */
+app.post('/sessions/:userId/proxy', authMiddleware(), express.json({ limit: '4kb' }), (req, res) => {
+  if (!proxyPool) return res.status(409).json({ error: 'proxy not configured' });
+  const userId = normalizeUserId(req.params.userId);
+  const geo = pickProxyGeo(req.body || {});
+  proxyUsage.setGeo(userId, geo);
+  res.json({ proxy: proxyUsage.getGeo(userId) });
+});
+
+/**
+ * @openapi
+ * /sessions/{userId}/proxy-usage:
+ *   get:
+ *     tags: [Sessions]
+ *     summary: Proxy bytes used by a user
+ *     description: Total bytes that passed through the proxy for this user since metering began. Counts request and response headers and bodies.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Usage totals.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 bytes:
+ *                   type: integer
+ *                 requests:
+ *                   type: integer
+ *                 updatedAt:
+ *                   type: string
+ *                   nullable: true
+ */
+app.get('/sessions/:userId/proxy-usage', authMiddleware(), (req, res) => {
+  res.json(proxyUsage.getUsage(normalizeUserId(req.params.userId)));
+});
+
+// --- Session replay: signed links to the Playwright trace viewer ---
+// Stable across restarts: derived from a secret that is set on the server (never from a random value).
+const replaySecret = makeReplaySecret(CONFIG.apiKey || CONFIG.accessKey || CONFIG.storageKey);
+app.use('/replay', express.static(traceViewerDir(), { index: 'index.html', fallthrough: true }));
+
+/**
+ * @openapi
+ * /sessions/{userId}/traces/{filename}/replay:
+ *   post:
+ *     tags: [Sessions]
+ *     summary: Create a replay link for a trace
+ *     description: Returns a short-lived link that opens the trace in the Playwright trace viewer. The link carries a signed token, not the access key, so it can be opened in a browser.
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: filename
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               ttlMs:
+ *                 type: integer
+ *                 description: Link lifetime in milliseconds. Default 15 minutes, maximum 1 hour.
+ *     responses:
+ *       200:
+ *         description: Replay link.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 url:
+ *                   type: string
+ *                   description: Path on this server. Prefix it with the server base URL.
+ *                 expiresAt:
+ *                   type: integer
+ *       400:
+ *         description: Invalid filename.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Trace not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.post('/sessions/:userId/traces/:filename/replay', authMiddleware(), async (req, res) => {
+  try {
+    const userId = normalizeUserId(req.params.userId);
+    const full = resolveTracePath(CONFIG.tracesDir, userId, req.params.filename);
+    if (!full) return res.status(400).json({ error: 'invalid filename' });
+    if (!(await statTrace(full))) return res.status(404).json({ error: 'not found' });
+    const expiresAt = Date.now() + replayTtlMs(req.body?.ttlMs);
+    const token = signReplayToken(replaySecret, { userId, filename: req.params.filename, expiresAt });
+    res.json({ url: `/replay/?trace=${encodeURIComponent(`/replay/t/${token}`)}`, expiresAt });
+  } catch (err) {
+    log('error', 'replay link failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @openapi
+ * /replay/t/{token}:
+ *   get:
+ *     tags: [Sessions]
+ *     summary: Stream a trace for the replay viewer
+ *     description: Serves the trace zip named by a valid, unexpired replay token. No access key is needed; the token is the credential.
+ *     parameters:
+ *       - name: token
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Trace zip.
+ *         content:
+ *           application/zip:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       404:
+ *         description: Token invalid, expired, or trace gone.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.get('/replay/t/:token', async (req, res) => {
+  const claim = verifyReplayToken(replaySecret, req.params.token);
+  if (!claim) return res.status(404).json({ error: 'not found' });
+  const full = resolveTracePath(CONFIG.tracesDir, claim.userId, claim.filename);
+  const st = full ? await statTrace(full) : null;
+  if (!st) return res.status(404).json({ error: 'not found' });
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Length', String(st.size));
+  res.setHeader('Cache-Control', 'no-store');
+  fs.createReadStream(full).on('error', () => res.destroy()).pipe(res);
+});
+
 app.delete('/sessions/:userId', async (req, res) => {
   try {
     const userId = normalizeUserId(req.params.userId);
@@ -8467,7 +9028,7 @@ app.post('/tabs/open', async (req, res) => {
     // Recycle oldest tab when limits are reached instead of rejecting
     let totalTabs = 0;
     for (const g of session.tabGroups.values()) totalTabs += g.size;
-    if (totalTabs >= MAX_TABS_PER_SESSION || getTotalTabCount() >= MAX_TABS_GLOBAL) {
+    if (totalTabs >= planLimits.limitsFor(normalizeUserId(userId)).maxTabsPerSession || getTotalTabCount() >= MAX_TABS_GLOBAL) {
       const recycled = await recycleOldestTab(session, req.reqId, userId);
       if (!recycled) {
         return res.status(429).json({ error: 'Maximum tabs per session reached' });
@@ -9196,6 +9757,9 @@ async function gracefulShutdown(signal) {
 
   await pluginEvents.emitAsync('server:shutdown', { signal }).catch((err) => {
     log('error', 'server:shutdown listener failed', { error: err.message });
+  });
+  await proxyUsage.flush().catch((err) => {
+    log('error', 'proxy usage flush failed', { error: err.message });
   });
 
   await closeAllSessions(`shutdown:${signal}`, {

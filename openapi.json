@@ -2131,6 +2131,52 @@
         }
       }
     },
+    "/agentcard/tabs/{tabId}/payment/{attachmentId}/order": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Record the merchant's order confirmation",
+        "description": "Send the order number the merchant showed (or confirmedWithoutOrderId: true when it shows none), after reading the merchant's own confirmation page. Only an approved purchase can be confirmed.\n",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The recorded merchant confirmation"
+          },
+          "404": {
+            "description": "No payment attachment for this user and tab"
+          },
+          "409": {
+            "description": "No approved purchase on this payment yet"
+          }
+        }
+      }
+    },
     "/sessions/{userId}/cookies": {
       "post": {
         "tags": [
@@ -3422,6 +3468,267 @@
           },
           "409": {
             "description": "A 409 with error human_in_control means a person holds the tab; page changed or target became invalid; caller should take a fresh snapshot and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/logins": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Save a login to the vault",
+        "description": "Stores a username and password, encrypted, for one user. The password is never returned by any route. allowedHosts limits which sites the login can be filled into.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "site",
+                  "password"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "site": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "allowedHosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved login, without the password.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid fields, or the vault is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "List saved logins for a user",
+        "description": "Lists the user's saved logins. Passwords are never included.",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved logins.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "logins": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "userId missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/logins/{loginId}": {
+      "delete": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Delete a saved login",
+        "parameters": [
+          {
+            "name": "loginId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such login for this user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/vault/fill": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Fill a saved login into the tab's sign-in form",
+        "description": "The password goes from the vault to the page and is never returned. The tab must be on an allowed host for the login, checked at every step. A page that asks for a code or a check returns status needs_code, and a person can finish it through handoff.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "loginId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "loginId": {
+                    "type": "string"
+                  },
+                  "submit": {
+                    "type": "boolean"
+                  },
+                  "handoff": {
+                    "type": "boolean"
+                  },
+                  "idleMs": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fill result, with the status of the sign-in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tab or login not found, or the page is not an allowed host.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A person holds the tab (human_in_control).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "This login was filled too often in the last minute.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5531,6 +5838,424 @@
           },
           "404": {
             "description": "Session not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/users/{userId}/plan": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Set a user's capacity plan",
+        "description": "Sets which plan a user's limits come from. Only the billing service may call this. It must send the internal secret in the x-chusky-internal header. Customer API keys cannot change a plan. Route is off when no internal secret is configured.",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-chusky-internal",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "plan"
+                ],
+                "properties": {
+                  "plan": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plan set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "type": "string"
+                    },
+                    "limits": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Route off, or wrong secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{userId}/status": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Find the open tabs for a user after a reconnect",
+        "description": "Use this after a client restart or a dropped connection. It lists the user's open session and every tab in it, with the tab id to use in later calls, the URL and title, who holds the tab, and when the idle session will close. Nothing is changed. The browser keeps running between client connections, so the client can continue with the same tab ids.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session state. active is false when the user has no open session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "sessionKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tabs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tabId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "control": {
+                            "type": "object",
+                            "description": "mode is agent or human. For human, until is the expiry time in ms."
+                          }
+                        }
+                      }
+                    },
+                    "lastActivityAt": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "idleCloseAt": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Time in ms when the session closes if nothing else happens."
+                    },
+                    "proxy": {
+                      "type": "object",
+                      "description": "Proxy location settings and usage totals for this user, when a proxy is configured."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{userId}/proxy": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Set the proxy location for a user",
+        "description": "Sets the country, state, city, zip and session length used the next time a proxied session is created for this user. Send an empty body to clear the settings. Changes do not move a session that is already open; close the session to apply them now.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "description": "Two-letter country code, for example us or gb."
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "zip": {
+                    "type": "string"
+                  },
+                  "sessionDurationMinutes": {
+                    "type": "integer",
+                    "description": "How long one proxy IP is kept. 1 to 1440."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings in effect for this user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "proxy": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{userId}/proxy-usage": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Proxy bytes used by a user",
+        "description": "Total bytes that passed through the proxy for this user since metering began. Counts request and response headers and bodies.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage totals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bytes": {
+                      "type": "integer"
+                    },
+                    "requests": {
+                      "type": "integer"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{userId}/traces/{filename}/replay": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Create a replay link for a trace",
+        "description": "Returns a short-lived link that opens the trace in the Playwright trace viewer. The link carries a signed token, not the access key, so it can be opened in a browser.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ttlMs": {
+                    "type": "integer",
+                    "description": "Link lifetime in milliseconds. Default 15 minutes, maximum 1 hour."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replay link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "Path on this server. Prefix it with the server base URL."
+                    },
+                    "expiresAt": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filename.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trace not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/replay/t/{token}": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Stream a trace for the replay viewer",
+        "description": "Serves the trace zip named by a valid, unexpired replay token. No access key is needed; the token is the credential.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace zip.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token invalid, expired, or trace gone.",
             "content": {
               "application/json": {
                 "schema": {

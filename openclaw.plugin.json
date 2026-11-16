@@ -154,7 +154,11 @@
       "chusky_dismiss_overlays",
       "chusky_page_state",
       "chusky_list_downloads",
-      "chusky_list_traces"
+      "chusky_list_traces",
+      "chusky_session_status",
+      "chusky_proxy_set",
+      "chusky_proxy_usage",
+      "chusky_trace_replay_link"
     ]
   }
 }

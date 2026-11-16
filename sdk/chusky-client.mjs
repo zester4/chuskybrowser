@@ -195,6 +195,17 @@ export class ChuskyClient {
   listTraces() { return this.#call('GET', `/sessions/${enc(this.#user)}/traces`); }
   getTrace(filename) { return this.#call('GET', `/sessions/${enc(this.#user)}/traces/${enc(filename)}`); }
   deleteTrace(filename) { return this.#call('DELETE', `/sessions/${enc(this.#user)}/traces/${enc(filename)}`); }
+  // Short-lived link to open a trace in the trace viewer. ttlMs: 1 to 3600000, default 15 minutes.
+  replayLink(filename, { ttlMs } = {}) {
+    return this.#call('POST', `/sessions/${enc(this.#user)}/traces/${enc(filename)}/replay`, { body: ttlMs ? { ttlMs } : {} });
+  }
+
+  // ----- Reconnect and proxy -----
+  // What is still open for this user: tab ids, URLs, who holds each tab, and when the session closes.
+  sessionStatus() { return this.#call('GET', `/sessions/${enc(this.#user)}/status`); }
+  // Location for this user's proxy: { country, state, city, zip, sessionDurationMinutes }. Empty object clears it.
+  setProxy(settings = {}) { return this.#call('POST', `/sessions/${enc(this.#user)}/proxy`, { body: settings }); }
+  proxyUsage() { return this.#call('GET', `/sessions/${enc(this.#user)}/proxy-usage`); }
 
   // cookies: [{ name, value, domain, path, expires, httpOnly, secure, sameSite }]
   importCookies(cookies) {
