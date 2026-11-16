@@ -266,7 +266,8 @@
     "fetch-bin": "node lib/camoufox-download.js",
     "test:upgrades": "node scripts/test-upgrades-live.mjs",
     "demo:replay": "node scripts/demo-replay.mjs",
-    "test:hard": "node scripts/test-hard-browser-live.mjs"
+    "test:hard": "node scripts/test-hard-browser-live.mjs",
+    "test:parallel": "node scripts/test-parallel-live.mjs"
   },
   "dependencies": {
     "@agent-cards/commerce-sdk": "0.20.0",
