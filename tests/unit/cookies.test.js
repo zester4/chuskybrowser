@@ -42,6 +42,7 @@ async function startServerWithoutApiKey() {
 
   const env = { ...cfg.serverEnv, DEBUG_RESPONSES: 'false' };
   delete env.CHUSKY_API_KEY;
+  delete env.CHUSKY_ACCESS_KEY;
 
   serverProcess = launchServer({
     pluginDir,

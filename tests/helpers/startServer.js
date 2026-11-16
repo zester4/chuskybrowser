@@ -36,7 +36,9 @@ async function startServer(port = 0, extraEnv = {}) {
   serverProcess = launchServer({
     pluginDir,
     port: usePort,
-    env: { ...cfg.serverEnv, DEBUG_RESPONSES: 'false', ...extraEnv },
+    // Keys from a developer's .env must not reach test servers: tests that expect
+    // an open server would get 401. A test that needs a key passes it in extraEnv.
+    env: { ...cfg.serverEnv, CHUSKY_ACCESS_KEY: '', CHUSKY_API_KEY: '', DEBUG_RESPONSES: 'false', ...extraEnv },
     log,
   });
 
