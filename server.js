@@ -8427,7 +8427,7 @@ app.get('/sessions/:userId/status', authMiddleware(), async (req, res) => {
     const userId = normalizeUserId(req.params.userId);
     const session = sessions.get(userId);
     const proxy = proxyPool ? { geo: proxyUsage.getGeo(userId), usage: proxyUsage.getUsage(userId) } : undefined;
-    if (!session) return res.json({ active: false, sessionKeys: [], tabs: [], lastActivityAt: null, idleCloseAt: null, proxy });
+    if (!session) return res.json({ active: false, sessionKeys: [], tabs: [], lastActivityAt: null, idleCloseAt: null, plan: planLimits.limitsFor(userId), proxy });
 
     const tabs = [];
     const sessionKeys = [];
