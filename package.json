@@ -268,7 +268,8 @@
     "demo:replay": "node scripts/demo-replay.mjs",
     "test:hard": "node scripts/test-hard-browser-live.mjs",
     "test:parallel": "node scripts/test-parallel-live.mjs",
-    "test:usage": "node scripts/test-usage-live.mjs"
+    "test:usage": "node scripts/test-usage-live.mjs",
+    "test:usage-direct": "node scripts/test-usage-direct.mjs"
   },
   "dependencies": {
     "@agent-cards/commerce-sdk": "0.20.0",
