@@ -29,7 +29,8 @@ const enc = encodeURIComponent;
 // Same shape the gateway uses: "accountId:endUserId" is how billing identifies the account.
 const user = `${accountId}:usage-${randomUUID().slice(0, 8)}`;
 
-const minutes = (openMs, closeMs) => Math.max(1, Math.ceil((closeMs - openMs) / 60000));
+// Billing is per second. The account's monthly total is rounded to 0.01 hours, not each tab.
+const seconds = (openMs, closeMs) => (closeMs - openMs) / 1000;
 const iso = (ms) => new Date(ms).toISOString();
 const rows = [];
 
@@ -59,12 +60,16 @@ if (b.data?.tabId) {
   rows.push({ name: 'tab B (closed by session end)', openB, closedB });
 }
 
-console.log('\nExpected billable minutes (tab lifetime, rounded up, minimum 1):');
+console.log('\nExpected billable time (tab lifetime, per second):');
+let total = 0;
 for (const r of rows) {
   const open = r.openA ?? r.openB;
   const close = r.closedA ?? r.closedB;
-  console.log(`  ${r.name}: ${iso(open)} to ${iso(close)} = ${minutes(open, close)} min`);
+  const s = seconds(open, close);
+  total += s;
+  console.log(`  ${r.name}: ${iso(open)} to ${iso(close)} = ${s.toFixed(1)} s`);
 }
-console.log(`\nCheck the frontend ledger for account ${accountId}. Both tabs should appear with these minutes.`);
+console.log(`  total: ${total.toFixed(1)} s = ${(total / 3600).toFixed(4)} h (the monthly total is rounded to 0.01 h)`);
+console.log(`\nThe server sends close events only. Browser minutes appear on the frontend dashboard only through the gateway, so this test checks the server side, not the dashboard totals.`);
 
 report.finish();

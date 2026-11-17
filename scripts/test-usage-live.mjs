@@ -49,8 +49,9 @@ async function call(path, { method = 'GET', body } = {}) {
   return { status: res.status, data };
 }
 
-function minutes(openedMs, closedMs) {
-  return Math.max(1, Math.ceil((closedMs - openedMs) / 60000));
+// Billing is per second. The account's monthly total is rounded to 0.01 hours, not each tab.
+function seconds(openedMs, closedMs) {
+  return (closedMs - openedMs) / 1000;
 }
 
 const results = [];
