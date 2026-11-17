@@ -1,0 +1,62 @@
+---
+title: Command line (chusky)
+description: Open pages, read them, act, and hand a tab to a person from your terminal. Every command needs your API key.
+---
+
+The `chusky` command wraps the SDK. Use it to test things quickly, or to script a flow from a shell.
+
+## Set up
+
+Set your key once, in `.env` in the folder you run from, or in your environment:
+
+```bash
+CHUSKYBROWSER_API_KEY=cb_live_...
+```
+
+The package `chuskybrowser-sdk` provides `chusky`. Once it is published, install it with:
+
+```bash
+npm install -g chuskybrowser-sdk
+```
+
+Until then, run it from this repository as `node sdk/cli.mjs`.
+
+Every command needs `--user <id>`, the end user this browser belongs to. For testing, use any ID you like, such as `test-1`.
+
+## Commands
+
+```bash
+# Tabs
+chusky open https://example.com --user test-1 --session task-1
+chusky navigate <tabId> https://example.org --user test-1
+chusky state <tabId> --user test-1
+chusky snapshot <tabId> --user test-1
+chusky screenshot <tabId> --user test-1 --out page.png
+chusky click <tabId> --user test-1 --ref e1
+chusky type <tabId> --user test-1 --ref e2 --text "hello" --enter
+chusky press <tabId> --user test-1 --key Enter
+chusky scroll <tabId> --user test-1 --direction down --amount 300
+chusky close <tabId> --user test-1
+chusky end --user test-1                       # close every tab for this user
+
+# Hand a tab to a person
+chusky handoff start <tabId> --user test-1 --reason "Sign in, then press Done"
+chusky link <tabId> --user test-1 --control    # a live view link for this user only
+chusky handoff release <tabId> --user test-1
+
+chusky help
+```
+
+Output is JSON, so you can pipe it into `jq`. Errors print one line to stderr and exit with status 1.
+
+```bash
+TAB=$(chusky open https://example.com --user test-1 | jq -r .tabId)
+chusky snapshot "$TAB" --user test-1 | jq .
+chusky close "$TAB" --user test-1
+```
+
+`handoff start` prints a live view link. Send it only to the user it belongs to. It also prints a reminder on stderr.
+
+## Your key
+
+The CLI never prints your key. Errors show the status and code, such as `HTTP 401 (invalid_api_key)`, so a bad key is easy to spot without exposing it.

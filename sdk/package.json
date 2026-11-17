@@ -10,6 +10,7 @@
   "files": [
     "chusky-client.mjs",
     "lib-env.mjs",
+    "cli.mjs",
     "README.md"
   ],
   "engines": {
@@ -22,5 +23,16 @@
     "directory": "sdk"
   },
   "homepage": "https://github.com/zester4/chuskybrowser#readme",
-  "keywords": ["browser", "automation", "ai-agent", "chuskybrowser", "sdk", "vault"]
+  "keywords": [
+    "browser",
+    "automation",
+    "ai-agent",
+    "chuskybrowser",
+    "sdk",
+    "vault",
+    "cli"
+  ],
+  "bin": {
+    "chusky": "./cli.mjs"
+  }
 }

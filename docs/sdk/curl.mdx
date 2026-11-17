@@ -1,0 +1,114 @@
+---
+title: Use the API with curl
+description: Call chuskybrowser from a terminal or any language with HTTP, using curl. Every request needs your API key.
+---
+
+Every request needs your API key. Set it once in your terminal and never put it in a script you share:
+
+```bash
+export CHUSKYBROWSER_API_KEY=cb_live_...
+export CHUSKY_USER_ID=customer-42   # the end user this browser belongs to
+BASE=https://chuskybrowser-production.up.railway.app/v1
+```
+
+Send the key as a header on every call: `Authorization: Bearer $CHUSKYBROWSER_API_KEY`.
+
+**Take the user ID from your own authenticated session.** The examples use a variable for it. Never use text a user types.
+
+On Windows PowerShell, call `curl.exe` (not `curl`, which PowerShell aliases to a different command). Set variables with `$env:CHUSKYBROWSER_API_KEY = "cb_live_..."`, and use `$env:CHUSKY_USER_ID` in place of `$CHUSKY_USER_ID`.
+
+## Open a page and read it
+
+```bash
+curl -s -X POST "$BASE/tabs" \
+  -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"sessionKey\":\"task-1\",\"url\":\"https://example.com\"}"
+```
+
+The response includes `tabId`. Use it in the calls below. To read it into a shell variable:
+
+```bash
+TAB=$(curl -s -X POST "$BASE/tabs" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"sessionKey\":\"task-1\",\"url\":\"https://example.com\"}" | jq -r .tabId)
+```
+
+Check the page state, then take a snapshot (the page with element refs such as `e1`, `e2`):
+
+```bash
+curl -s "$BASE/tabs/$TAB/state?userId=$CHUSKY_USER_ID" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY"
+curl -s "$BASE/tabs/$TAB/snapshot?userId=$CHUSKY_USER_ID" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY"
+```
+
+## Act on the page
+
+```bash
+# Click an element by its ref from the snapshot
+curl -s -X POST "$BASE/tabs/$TAB/click" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"ref\":\"e1\"}"
+
+# Type text into a field, then press Enter
+curl -s -X POST "$BASE/tabs/$TAB/type" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"ref\":\"e2\",\"text\":\"hello\",\"pressEnter\":true}"
+
+# Scroll
+curl -s -X POST "$BASE/tabs/$TAB/scroll" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"direction\":\"down\",\"amount\":300}"
+
+# Go to another page
+curl -s -X POST "$BASE/tabs/$TAB/navigate" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"url\":\"https://example.org\"}"
+
+# Screenshot (saves a PNG)
+curl -s "$BASE/tabs/$TAB/screenshot?userId=$CHUSKY_USER_ID" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -o page.png
+```
+
+## Hand the tab to a person (sign-in, codes, checks)
+
+Start a handoff. The agent is paused on this tab until the person presses Done or you release it.
+
+```bash
+curl -s -X POST "$BASE/tabs/$TAB/handoff" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"reason\":\"Sign in, then press Done\"}"
+```
+
+Create a live view link with control, and send it to that user only:
+
+```bash
+curl -s -X POST "$BASE/live-viewer/links" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\",\"tabId\":\"$TAB\",\"control\":true}"
+```
+
+The response has a `url`. It works for this one tab and expires after its time limit. Do not share it with anyone else.
+
+When the person is done, give the tab back:
+
+```bash
+curl -s -X POST "$BASE/tabs/$TAB/handoff/release" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY" -H "Content-Type: application/json" \
+  -d "{\"userId\":\"$CHUSKY_USER_ID\"}"
+```
+
+While a person holds the tab, the agent's calls return `409` with `human_in_control`. Wait instead of retrying in a loop.
+
+## Close
+
+```bash
+# Close one tab
+curl -s -X DELETE "$BASE/tabs/$TAB?userId=$CHUSKY_USER_ID" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY"
+
+# Close every tab for this user
+curl -s -X DELETE "$BASE/sessions/$CHUSKY_USER_ID" -H "Authorization: Bearer $CHUSKYBROWSER_API_KEY"
+```
+
+## Errors
+
+| Status | Meaning |
+|---|---|
+| 401 `invalid_api_key` | The key is missing, wrong, or revoked. |
+| 404 | The tab does not exist, was closed, or belongs to another user ID. |
+| 409 `human_in_control` | A person holds the tab. Wait. |
+| 409 `handoff_not_active` | A control link was requested with no handoff active. Start a handoff first. |
+
+Use `curl -sS` (not `-s` alone) to see connection errors, and `-w "\n%{http_code}\n"` to see the status code with the body.
+
+For the full list of endpoints, see `docs/openapi.json`, and the TypeScript SDK in `docs/sdk/client.mdx`.

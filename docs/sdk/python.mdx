@@ -1,0 +1,67 @@
+---
+title: Python client
+description: Use chuskybrowser from Python. Standard library only. Every call needs your API key.
+---
+
+The Python client has no dependencies and runs on Python 3.9 or newer. It covers the same calls as the TypeScript SDK.
+
+## Install
+
+From this repository:
+
+```bash
+pip install ./sdk-python
+```
+
+Once it is published: `pip install chuskybrowser`.
+
+## Set your key
+
+Set `CHUSKYBROWSER_API_KEY` in your environment, or in a `.env` file in the folder you run from. Optionally set `CHUSKYBROWSER_BASE_URL` to use a different gateway.
+
+## Use it
+
+```python
+from chusky import ChuskyClient, ChuskyError
+
+# One client per end user. Take the ID from your own session, never from user-typed text.
+browser = ChuskyClient(user_id=user_id_from_your_session)
+
+tab = browser.open_tab(url="https://example.com", session_key="task-1")
+tab_id = tab["tabId"]
+
+page = browser.snapshot(tab_id)           # the page with element refs such as e1, e2
+browser.click(tab_id, ref="e1")
+browser.type(tab_id, "hello", ref="e2", press_enter=True)
+browser.scroll(tab_id, "down", 300)
+png = browser.screenshot(tab_id)          # bytes; write them to a .png file
+
+browser.close_tab(tab_id)
+```
+
+## Hand a tab to a person
+
+```python
+browser.start_handoff(tab_id, reason="Sign in, then press Done")
+url = browser.viewer_link(tab_id, control=True)   # send this to that user only
+# ... the person signs in through the link and presses Done ...
+browser.release(tab_id)
+```
+
+## Errors
+
+Failed calls raise `ChuskyError`. It has `status` (the HTTP status), `code` (for example `invalid_api_key` or `human_in_control`), and `body`.
+
+```python
+try:
+    browser.state(tab_id)
+except ChuskyError as err:
+    if err.code == "human_in_control":
+        pass  # a person holds the tab; wait
+    else:
+        raise
+```
+
+## Your key
+
+The key is read from the environment and never printed. Error messages do not include it.
