@@ -11,10 +11,10 @@
  *   2. Closes the tab with DELETE /v1/tabs/:id. This is the normal path.
  *   3. Opens a second tab, waits, then ends the session with DELETE /v1/sessions/:userId.
  *      This is the path that used to leave tabs unbilled.
- *   4. Prints, for each tab, the open time, close time, and billable minutes
- *      (tab lifetime, rounded up to a whole minute, minimum one minute).
+ *   4. Prints, for each tab, the open time, close time, and billable seconds
+ *      (tab lifetime, per second).
  *
- * The script cannot see the frontend's ledger. Compare the printed minutes
+ * The script cannot see the frontend's ledger. Compare the printed seconds
  * with the usage the frontend shows for this test account. They must match.
  */
 import { randomUUID } from 'node:crypto';
