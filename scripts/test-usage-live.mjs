@@ -87,7 +87,7 @@ console.log('');
 for (const r of results) {
   if (!r.ok) ok = false;
   if (r.opened && r.closed) {
-    console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}: ${new Date(r.opened).toISOString()} to ${new Date(r.closed).toISOString()}, billable ${minutes(r.opened, r.closed)} min`);
+    console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}: ${new Date(r.opened).toISOString()} to ${new Date(r.closed).toISOString()}, billable ${seconds(r.opened, r.closed).toFixed(1)} s`);
   } else {
     console.log(`FAIL  ${r.name}${r.note ? ` (${r.note})` : ''}`);
   }
