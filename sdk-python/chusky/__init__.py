@@ -3,4 +3,4 @@
 from .client import ChuskyClient, ChuskyError, DEFAULT_GATEWAY_URL
 
 __all__ = ["ChuskyClient", "ChuskyError", "DEFAULT_GATEWAY_URL"]
-__version__ = "1.20.0"
+__version__ = "1.21.0"

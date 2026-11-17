@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chuskybrowser"
-version = "1.20.0"
+version = "1.21.0"
 description = "Python client for chuskybrowser: open pages, read them, and hand them to a person for sign-in."
 readme = "README.md"
 requires-python = ">=3.9"
