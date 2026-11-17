@@ -271,7 +271,8 @@
     "test:usage": "node scripts/test-usage-live.mjs",
     "test:usage-direct": "node scripts/test-usage-direct.mjs",
     "test:key": "node scripts/test-key.mjs",
-    "test:restart-open": "node scripts/test-restart-open.mjs"
+    "test:restart-open": "node scripts/test-restart-open.mjs",
+    "test:handoff": "node scripts/test-handoff-x-live.mjs"
   },
   "dependencies": {
     "@agent-cards/commerce-sdk": "0.20.0",
