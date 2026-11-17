@@ -79,6 +79,7 @@ import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
 import { killProcessIds } from './lib/browser-processes.js';
 import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profilePathsFromProcessSnapshot } from './lib/process-ownership.js';
 import { killWindowsProcessTree, refreshWindowsProcesses } from './lib/windows-processes.js';
+import { createOpenTabLedger } from './lib/open-tabs.js';
 import {
   safePageUrl, urlDomain, hashIdentifier,
   isDeadContextError, isPageCrashedError, isTimeoutError,
@@ -164,6 +165,13 @@ const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: 
 // Tab close times, sent to the frontend so minutes are recorded exactly. Retried; never blocks a request.
 const usageReporter = createUsageReporter({ frontendUrl: process.env.CHUSKY_FRONTEND_URL, secret: process.env.CHUSKY_INTERNAL_SECRET, queueFile: process.env.CHUSKY_USAGE_QUEUE_FILE || null, log });
 usageReporter.resume(); // send anything saved before a restart
+
+// Customer tabs open when the server last stopped never got a close event, so close them in billing once.
+const openTabs = createOpenTabLedger({ filePath: pathJoin(CONFIG.profileDir, 'open-tabs.json'), log });
+for (const left of openTabs.takeLeftovers()) {
+  const leftAccount = typeof left.userId === 'string' && left.userId.includes(':') ? left.userId.split(':')[0] : null;
+  if (leftAccount) usageReporter.report({ type: 'tab_close', accountId: leftAccount, tabId: left.tabId, closedAt: new Date().toISOString(), reason: 'server_restart' });
+}
 
 // Billing is for customer tabs only. Their userId is "accountId:endUserId".
 function billingAccountId(userId) {
@@ -2506,6 +2514,7 @@ async function closeSession(userId, session, {
     if (accountId) {
       for (const group of session.tabGroups.values()) {
         for (const tabId of group.keys()) {
+          openTabs.close(tabId);
           usageReporter.report({ type: 'tab_close', accountId, tabId, closedAt: new Date().toISOString(), reason });
         }
       }
@@ -2902,6 +2911,7 @@ function destroyTab(session, tabId, reason, userId) {
       if (reason) tabsDestroyedTotal.labels(reason).inc();
       // userId is "accountId:endUserId" for customer tabs. Report the real close time for billing.
       const accountId = typeof userId === 'string' && userId.includes(':') ? userId.split(':')[0] : null;
+      openTabs.close(tabId);
       if (accountId) usageReporter.report({ type: 'tab_close', accountId, tabId, closedAt: new Date().toISOString(), reason: reason || 'unknown' });
       pluginEvents.emit('tab:destroyed', { userId: userId || null, tabId, reason: reason || 'unknown' });
       return true;
@@ -4266,6 +4276,7 @@ app.post('/tabs', async (req, res) => {
       // begun discarding the tab, so do not announce it.
       if (abandoned) throw new Error('tab create abandoned after the route deadline');
 
+      if (billingAccountId(userId)) openTabs.open(tabId, userId);
       pluginEvents.emit('tab:created', { userId, tabId, page, url: page.url() });
       log('info', 'tab created', { reqId: req.reqId, tabId, userId, sessionKey: resolvedSessionKey, url: page.url() });
       return {
@@ -7658,6 +7669,7 @@ app.delete('/tabs/:tabId', async (req, res) => {
       await clearTabDownloads(found.tabState);
       await safePageClose(found.tabState.page);
       found.group.delete(req.params.tabId);
+      openTabs.close(req.params.tabId);
       setAgent(req.params.tabId);
       { const _l = tabLocks.get(req.params.tabId); if (_l) _l.drain(); tabLocks.delete(req.params.tabId); refreshTabLockQueueDepth(); }
       dropEmptyTabGroup(session, found.listItemId, found.group);
