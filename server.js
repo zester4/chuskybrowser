@@ -165,6 +165,11 @@ const agentcard = createAgentCardService({ config: CONFIG.agentcard, stateFile: 
 const usageReporter = createUsageReporter({ frontendUrl: process.env.CHUSKY_FRONTEND_URL, secret: process.env.CHUSKY_INTERNAL_SECRET, queueFile: process.env.CHUSKY_USAGE_QUEUE_FILE || null, log });
 usageReporter.resume(); // send anything saved before a restart
 
+// Billing is for customer tabs only. Their userId is "accountId:endUserId".
+function billingAccountId(userId) {
+  return typeof userId === 'string' && userId.includes(':') ? userId.split(':')[0] : null;
+}
+
 // Login vault. Off until both CHUSKY_VAULT_KEY (32 random bytes, base64) and CHUSKY_VAULT_FILE are set.
 let vault = null;
 let vaultError = null;
@@ -2493,6 +2498,24 @@ async function closeSession(userId, session, {
 
   const key = normalizeUserId(userId);
 
+  // Billing: every tab still open is closed now, and unsent proxy bytes are sent once.
+  // Without this, tabs closed by session end, idle expiry or a browser restart would be billed forever.
+  if (!session._billed) {
+    session._billed = true;
+    const accountId = billingAccountId(key);
+    if (accountId) {
+      for (const group of session.tabGroups.values()) {
+        for (const tabId of group.keys()) {
+          usageReporter.report({ type: 'tab_close', accountId, tabId, closedAt: new Date().toISOString(), reason });
+        }
+      }
+      if (session.bytesUnreported > 0) {
+        usageReporter.report({ type: 'proxy_bytes', accountId, endUserId: key.slice(accountId.length + 1), bytes: session.bytesUnreported, reason });
+      }
+    }
+    session.bytesUnreported = 0;
+  }
+
   // Drain locks BEFORE closing context — queued operations get clean "Tab destroyed"
   // (410) instead of messy "Target page closed" (500) errors.
   if (clearLocks) {
@@ -2607,13 +2630,20 @@ async function getSession(userId, { trace = false } = {}) {
         }
       }
 
-      const created = { context, tabGroups: new Map(), pageLeases: new Set(), lastAccess: Date.now(), proxySessionId: sessionProxy?.sessionId || null, tracePath };
+      const created = { context, tabGroups: new Map(), pageLeases: new Set(), lastAccess: Date.now(), proxySessionId: sessionProxy?.sessionId || null, tracePath, bytesUnreported: 0, _billed: false };
       if (sessionProxy) {
         // Meter bytes per user. Playwright reports sizes for each finished request.
         context.on('requestfinished', (request) => {
           request.sizes().then((s) => {
             const total = (s.requestBodySize || 0) + (s.requestHeadersSize || 0) + (s.responseBodySize || 0) + (s.responseHeadersSize || 0);
             proxyUsage.recordBytes(key, total);
+            if (created._billed) {
+              // The session already closed and sent its bytes. Send this late request on its own.
+              const accountId = billingAccountId(key);
+              if (accountId && total > 0) usageReporter.report({ type: 'proxy_bytes', accountId, endUserId: key.slice(accountId.length + 1), bytes: total, reason: 'late_request' });
+            } else {
+              created.bytesUnreported += total;
+            }
           }).catch(() => {});
         });
       }
