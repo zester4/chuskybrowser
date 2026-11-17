@@ -33,6 +33,6 @@
     "cli"
   ],
   "bin": {
-    "chusky": "./cli.mjs"
+    "cb": "./cli.mjs"
   }
 }

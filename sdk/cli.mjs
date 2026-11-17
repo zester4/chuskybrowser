@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// chusky: a command line for the chuskybrowser API. Wraps the SDK in this folder.
+// cb: a command line for the chuskybrowser API. Wraps the SDK in this folder.
 //
 //   export CHUSKYBROWSER_API_KEY=cb_live_...      (or put it in .env)
-//   chusky open https://example.com --user alice --session task-1
+//   cb open https://example.com --user alice --session task-1
 //
 // Every command needs CHUSKYBROWSER_API_KEY and --user (the end user's id).
 // Output is JSON, so you can pipe it into jq or another script.
@@ -10,30 +10,30 @@
 import { writeFileSync } from 'node:fs';
 import { ChuskyClient } from './chusky-client.mjs';
 
-const USAGE = `chusky -- command line for the chuskybrowser API
+const USAGE = `cb -- command line for the chuskybrowser API
 
 Set CHUSKYBROWSER_API_KEY (in .env or your environment). Every command needs --user <id>.
 
 Tabs
-  chusky open <url> --user U [--session S] [--trace]
-  chusky navigate <tabId> <url> --user U
-  chusky state <tabId> --user U
-  chusky snapshot <tabId> --user U
-  chusky screenshot <tabId> --user U --out page.png
-  chusky click <tabId> --user U (--ref e1 | --selector "css")
-  chusky type <tabId> --user U (--ref e2 | --selector "css") --text "hello" [--enter]
-  chusky press <tabId> --user U --key Enter
-  chusky scroll <tabId> --user U [--direction down] [--amount 300]
-  chusky close <tabId> --user U
-  chusky end --user U                      close every tab for this user
+  cb open <url> --user U [--session S] [--trace]
+  cb navigate <tabId> <url> --user U
+  cb state <tabId> --user U
+  cb snapshot <tabId> --user U
+  cb screenshot <tabId> --user U --out page.png
+  cb click <tabId> --user U (--ref e1 | --selector "css")
+  cb type <tabId> --user U (--ref e2 | --selector "css") --text "hello" [--enter]
+  cb press <tabId> --user U --key Enter
+  cb scroll <tabId> --user U [--direction down] [--amount 300]
+  cb close <tabId> --user U
+  cb end --user U                      close every tab for this user
 
 Hand a tab to a person
-  chusky handoff start <tabId> --user U [--reason "Sign in, then press Done"]
-  chusky handoff release <tabId> --user U
-  chusky link <tabId> --user U [--control]  print a live view link (control needs an active handoff)
+  cb handoff start <tabId> --user U [--reason "Sign in, then press Done"]
+  cb handoff release <tabId> --user U
+  cb link <tabId> --user U [--control]  print a live view link (control needs an active handoff)
 
 Other
-  chusky help
+  cb help
 `;
 
 function parse(argv) {
@@ -65,7 +65,7 @@ function needUser(flags) {
 }
 
 function needArg(value, what) {
-  if (!value || value === true) throw new Error(`Missing ${what}. Run "chusky help" for usage.`);
+  if (!value || value === true) throw new Error(`Missing ${what}. Run "cb help" for usage.`);
   return value;
 }
 
@@ -148,7 +148,7 @@ async function run() {
         print(await client.release(tabId));
         return;
       }
-      throw new Error('Use "chusky handoff start <tabId>" or "chusky handoff release <tabId>".');
+      throw new Error('Use "cb handoff start <tabId>" or "cb handoff release <tabId>".');
     }
     case 'link': {
       const tabId = needArg(args[0], 'tab id');
@@ -158,7 +158,7 @@ async function run() {
       return;
     }
     default:
-      throw new Error(`Unknown command "${cmd}". Run "chusky help" for usage.`);
+      throw new Error(`Unknown command "${cmd}". Run "cb help" for usage.`);
   }
 }
 
