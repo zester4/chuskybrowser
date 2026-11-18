@@ -27,7 +27,7 @@ function sendUpstream(res, upstream, buffer) {
   res.status(upstream.status).send(buffer);
 }
 
-export function createGatewayApp({ store, chuskyUrl, masterKey, cookieKey = '', fetchImpl = globalThis.fetch }) {
+export function createGatewayApp({ store, chuskyUrl, masterKey, cookieKey = '', fetchImpl = globalThis.fetch, onAccountPlan = () => {} }) {
   // masterKey may be empty when the browser server runs without CHUSKY_ACCESS_KEY.
   if (!store || !chuskyUrl) throw new Error('createGatewayApp needs store and chuskyUrl');
   const upstreamBase = chuskyUrl.replace(/\/+$/, '');
@@ -76,9 +76,19 @@ export function createGatewayApp({ store, chuskyUrl, masterKey, cookieKey = '', 
     try {
       const account = await verifyApiKey(store, bearer(req));
       if (!account) return res.status(401).json({ error: 'invalid_api_key' });
+      if (account.plan) onAccountPlan(account.accountId, account.plan);
 
       const route = matchRoute(req.method, req.path);
       if (!route) return res.status(404).json({ error: 'not_found' });
+
+      // Starting a tab needs an active plan with credit. Calls on tabs already open still go through.
+      if (route.kind === 'open' && account.allowed === false) {
+        return res.status(402).json({
+          error: 'payment_required',
+          code: 'no_credit',
+          message: 'This account has no active plan or credit. Add credit or upgrade in the developer console.',
+        });
+      }
 
       // The end user is a name the customer chooses for their own user, e.g. "alice".
       const endUser = route.pathUser ?? String(req.body?.userId ?? req.query?.userId ?? '').trim();

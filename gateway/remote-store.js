@@ -38,7 +38,10 @@ export function createRemoteStore({ frontendUrl, secret, fetchImpl = globalThis.
       const hit = cache.get(hash);
       if (hit && Date.now() - hit.at < cacheMs) return hit.row;
       const data = await call(KEY_CHECK_PATH, { keyHash: hash });
-      const row = data ? { id: data.id, accountId: data.accountId, revokedAt: data.revokedAt ?? null, keyHash: hash } : null;
+      // plan and allowed come from the frontend's billing state. Missing means: no plan change, allowed.
+      const row = data
+        ? { id: data.id, accountId: data.accountId, revokedAt: data.revokedAt ?? null, keyHash: hash, plan: data.plan ?? null, allowed: data.allowed !== false }
+        : null;
       cache.set(hash, { at: Date.now(), row });
       return row;
     },

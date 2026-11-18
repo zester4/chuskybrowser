@@ -38,7 +38,14 @@ export async function verifyApiKey(store, rawKey) {
   const row = await store.findKeyByHash(hashKey(rawKey));
   if (!row || row.revokedAt) return null;
   await store.touchKey(row.id);
-  return { accountId: row.accountId, keyId: row.id };
+  // plan: the developer account's plan, when the store knows it (the frontend does).
+  // allowed: false means the account may not start new tabs (no plan, or credit used up).
+  return {
+    accountId: row.accountId,
+    keyId: row.id,
+    ...(row.plan ? { plan: row.plan } : {}),
+    allowed: row.allowed !== false,
+  };
 }
 
 export async function listApiKeys(store, accountId) {

@@ -20,7 +20,7 @@ describe('file key store', () => {
     const cli = createFileKeyStore({ file });
     const { key } = await createApiKey(cli, ACCOUNT, 'dev');
     const server = createFileKeyStore({ file }); // a fresh store, as after a restart
-    expect(await verifyApiKey(server, key)).toEqual({ accountId: ACCOUNT, keyId: expect.any(String) });
+    expect(await verifyApiKey(server, key)).toEqual({ accountId: ACCOUNT, keyId: expect.any(String), allowed: true });
   });
 
   it('stores only the hash, never the raw key', async () => {

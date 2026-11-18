@@ -305,6 +305,8 @@ const gatewayApp = createGatewayApp({
   chuskyUrl: `http://127.0.0.1:${CONFIG.port}`,
   masterKey: CONFIG.accessKey,
   cookieKey: CONFIG.apiKey,
+  // The developer account's plan, from the frontend's key check. Sets the limits for its end users.
+  onAccountPlan: (accountId, plan) => planLimits.setAccountPlan(accountId, plan),
 });
 app.use((req, res, next) => (req.path === '/v1' || req.path.startsWith('/v1/')
   ? gatewayApp(req, res, next)
@@ -1872,7 +1874,7 @@ function getHostOS() {
 }
 
 // Proxy strategy for outbound browsing.
-const proxyPool = createProxyPool(CONFIG.proxy);
+const proxyPool = CONFIG.proxyEnabled ? createProxyPool(CONFIG.proxy) : null;
 // Per-user proxy location and byte totals. Saved beside the profiles, on the same volume.
 const proxyUsage = createProxyUsageStore({ filePath: pathJoin(CONFIG.profileDir, 'proxy-usage.json') });
 

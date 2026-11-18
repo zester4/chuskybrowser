@@ -35,7 +35,17 @@ describe('remote store', () => {
   it('accepts a key the frontend knows, with the same account and key id', async () => {
     const { fetchImpl } = fakeFrontend();
     const store = createRemoteStore({ frontendUrl: FRONTEND, secret: SECRET, fetchImpl });
-    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1' });
+    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1', allowed: true });
+  });
+
+  it('passes the frontend\'s plan and allowed flag through', async () => {
+    const seen = [];
+    const fetchImpl = async (url, init) => {
+      seen.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ id: 'key-1', accountId: 'acct-1', revokedAt: null, plan: 'pro', allowed: false }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const store = createRemoteStore({ frontendUrl: FRONTEND, secret: SECRET, fetchImpl });
+    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1', plan: 'pro', allowed: false });
   });
 
   it('refuses a key the frontend does not know, and a revoked one', async () => {
