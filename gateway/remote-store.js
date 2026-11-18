@@ -7,6 +7,9 @@ import { createMemoryStore } from './store.js';
 const KEY_CHECK_PATH = '/internal/keys/verify';
 const EVENT_PATH = '/internal/events';
 
+// Proxy mode per developer account: ours (our proxy, $5/GB), own (their proxy, $0.20/GB), direct (no proxy, $0.20/GB).
+const PROXY_MODES = new Set(['ours', 'own', 'direct']);
+
 export function createRemoteStore({ frontendUrl, secret, fetchImpl = globalThis.fetch, cacheMs = 30_000, timeoutMs = 5_000 }) {
   if (!frontendUrl || !secret) throw new Error('The remote store needs CHUSKY_FRONTEND_URL and CHUSKY_INTERNAL_SECRET.');
   const base = frontendUrl.replace(/\/+$/, '');
@@ -38,9 +41,9 @@ export function createRemoteStore({ frontendUrl, secret, fetchImpl = globalThis.
       const hit = cache.get(hash);
       if (hit && Date.now() - hit.at < cacheMs) return hit.row;
       const data = await call(KEY_CHECK_PATH, { keyHash: hash });
-      // plan and allowed come from the frontend's billing state. Missing means: no plan change, allowed.
+      // plan, allowed and proxy come from the frontend's billing state. Missing means: no plan change, allowed, our proxy.
       const row = data
-        ? { id: data.id, accountId: data.accountId, revokedAt: data.revokedAt ?? null, keyHash: hash, plan: data.plan ?? null, allowed: data.allowed !== false }
+        ? { id: data.id, accountId: data.accountId, revokedAt: data.revokedAt ?? null, keyHash: hash, plan: data.plan ?? null, allowed: data.allowed !== false, proxy: PROXY_MODES.has(data.proxy) ? data.proxy : 'ours' }
         : null;
       cache.set(hash, { at: Date.now(), row });
       return row;

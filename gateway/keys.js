@@ -45,6 +45,7 @@ export async function verifyApiKey(store, rawKey) {
     keyId: row.id,
     ...(row.plan ? { plan: row.plan } : {}),
     allowed: row.allowed !== false,
+    proxy: row.proxy || 'ours',
   };
 }
 

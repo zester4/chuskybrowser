@@ -35,7 +35,17 @@ describe('remote store', () => {
   it('accepts a key the frontend knows, with the same account and key id', async () => {
     const { fetchImpl } = fakeFrontend();
     const store = createRemoteStore({ frontendUrl: FRONTEND, secret: SECRET, fetchImpl });
-    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1', allowed: true });
+    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1', allowed: true, proxy: 'ours' });
+  });
+
+  it('passes the proxy mode through and treats unknown values as ours', async () => {
+    const fetchImpl = async (_url, init) => {
+      const body = JSON.parse(init.body);
+      const proxy = body.keyHash === 'x' ? 'own' : 'bogus';
+      return new Response(JSON.stringify({ id: 'key-1', accountId: 'acct-1', revokedAt: null, proxy }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const store = createRemoteStore({ frontendUrl: 'http://fe', secret: 's', fetchImpl });
+    expect((await verifyApiKey(store, KEY)).proxy).toBe('ours');
   });
 
   it('passes the frontend\'s plan and allowed flag through', async () => {
@@ -45,7 +55,7 @@ describe('remote store', () => {
       return new Response(JSON.stringify({ id: 'key-1', accountId: 'acct-1', revokedAt: null, plan: 'pro', allowed: false }), { status: 200, headers: { 'content-type': 'application/json' } });
     };
     const store = createRemoteStore({ frontendUrl: FRONTEND, secret: SECRET, fetchImpl });
-    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1', plan: 'pro', allowed: false });
+    expect(await verifyApiKey(store, KEY)).toEqual({ accountId: 'acct-1', keyId: 'key-1', plan: 'pro', allowed: false, proxy: 'ours' });
   });
 
   it('refuses a key the frontend does not know, and a revoked one', async () => {
