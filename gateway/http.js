@@ -33,7 +33,10 @@ export function createGatewayApp({ store, chuskyUrl, masterKey, cookieKey = '', 
   const upstreamBase = chuskyUrl.replace(/\/+$/, '');
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '5mb' }));
+  // Customer file uploads are base64 in JSON, up to 20 MB of file, so they get a larger limit.
+  const uploadJson = express.json({ limit: '30mb' });
+  const defaultJson = express.json({ limit: '5mb' });
+  app.use((req, res, next) => (req.path === '/v1/uploads' ? uploadJson(req, res, next) : defaultJson(req, res, next)));
 
   // Forward one request to the browser server.
   async function forward(method, path, { query, body, headers = {} }) {

@@ -3382,6 +3382,82 @@
         }
       }
     },
+    "/uploads": {
+      "post": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Send a file to the browser server",
+        "description": "Stores a file for this user and returns its server path. Attach that path with POST /tabs/{tabId}/upload. The file is kept for a limited time, then removed.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "filename",
+                  "contentBase64"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "contentBase64": {
+                    "type": "string",
+                    "description": "The file's bytes, base64 encoded. Up to 20 MB before encoding."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "bytes": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File is larger than 20 MB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tabs/{tabId}/type": {
       "post": {
         "tags": [

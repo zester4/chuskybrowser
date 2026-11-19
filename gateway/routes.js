@@ -35,6 +35,7 @@ export const ROUTES = [
   { m: 'DELETE', re: /^\/sessions\/([^/]+)$/, kind: 'session', userAt: 1 },
 
   // Live view. Links are issued for the customer's tab. The viewer pages are token-gated.
+  { m: 'POST', re: /^\/uploads$/, kind: 'user' },
   { m: 'POST', re: /^\/live-viewer\/links$/, kind: 'viewer-link' },
   { m: 'GET', re: /^\/live-viewer\/(view|frame|control)$/, kind: 'public', publicPath: true },
   { m: 'POST', re: /^\/live-viewer\/(input|done)$/, kind: 'public', publicPath: true },

@@ -81,6 +81,7 @@ import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profileP
 import { killWindowsProcessTree, refreshWindowsProcesses } from './lib/windows-processes.js';
 import { createOpenTabLedger } from './lib/open-tabs.js';
 import { findOrphanTabs } from './lib/tab-reaper.js';
+import { customerUploadDir, safeFileName, isInsideDir, sweepOldUploads, MAX_UPLOAD_BYTES } from './lib/customer-uploads.js';
 import {
   safePageUrl, urlDomain, hashIdentifier,
   isDeadContextError, isPageCrashedError, isTimeoutError,
@@ -250,7 +251,7 @@ app.post('/agentcard/webhooks', express.raw({ type: '*/*', limit: '256kb' }), ag
 
 const globalJsonParser = express.json({ limit: '100kb' });
 app.use((req, res, next) => {
-  if (req.method === 'POST' && /^\/tabs\/[^/]+\/evaluate$/.test(req.path)) {
+  if (req.method === 'POST' && (/^\/tabs\/[^/]+\/evaluate$/.test(req.path) || req.path === '/uploads')) {
     return next();
   }
   return globalJsonParser(req, res, next);
@@ -5677,6 +5678,74 @@ const UPLOAD_SETTLE_MS = 1500; // let the page process the upload / render a pre
  *                 reason:
  *                   type: string
  */
+/**
+ * @openapi
+ * /uploads:
+ *   post:
+ *     tags: [Content]
+ *     summary: Send a file to the browser server
+ *     description: >
+ *       Stores a file for this user and returns its server path. Attach that path with
+ *       POST /tabs/{tabId}/upload. The file is kept for a limited time, then removed.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, filename, contentBase64]
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               filename:
+ *                 type: string
+ *               contentBase64:
+ *                 type: string
+ *                 description: The file's bytes, base64 encoded. Up to 20 MB before encoding.
+ *     responses:
+ *       200:
+ *         description: File stored.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 path:
+ *                   type: string
+ *                 bytes:
+ *                   type: integer
+ *       400:
+ *         description: Missing or invalid fields.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       413:
+ *         description: File is larger than 20 MB.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.post('/uploads', express.json({ limit: '30mb' }), async (req, res) => {
+  try {
+    const userId = String(req.body?.userId || '').trim();
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const contentBase64 = req.body?.contentBase64;
+    if (typeof contentBase64 !== 'string' || !contentBase64) return res.status(400).json({ error: 'contentBase64 required' });
+    const bytes = Buffer.from(contentBase64, 'base64');
+    if (!bytes.length) return res.status(400).json({ error: 'file is empty' });
+    if (bytes.length > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'file_too_large', maxBytes: MAX_UPLOAD_BYTES });
+    const dir = customerUploadDir(CONFIG.uploadsDir, userId);
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = pathJoin(dir, `${crypto.randomUUID()}-${safeFileName(req.body?.filename)}`);
+    await fs.promises.writeFile(file, bytes, { mode: 0o600 });
+    res.json({ path: file, bytes: bytes.length });
+  } catch (err) {
+    handleRouteError(err, req, res);
+  }
+});
+
 app.post('/tabs/:tabId/upload', async (req, res) => {
   const blocked = agentActionBlock(req.params.tabId);
   if (blocked) return res.status(409).json(blocked);
@@ -5691,6 +5760,13 @@ app.post('/tabs/:tabId/upload', async (req, res) => {
     if (!filePath) return res.status(400).json({ error: 'path required (container-side file path)' });
 
     const paths = await resolveUploadPaths({ uploadsDir: CONFIG.uploadsDir, filePaths: Array.isArray(filePath) ? filePath : [filePath] });
+    // A customer may attach only files it uploaded itself, never another customer's or the server's own.
+    if (billingAccountId(String(userId))) {
+      const scope = await fs.promises.realpath(customerUploadDir(CONFIG.uploadsDir, userId)).catch(() => null);
+      if (!scope || !paths.every((p) => isInsideDir(scope, p))) {
+        return res.status(403).json({ error: 'upload_path_outside_customer_folder', message: 'Upload the file with POST /v1/uploads first, then attach the path it returns.' });
+      }
+    }
 
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, tabId);
@@ -8737,6 +8813,11 @@ app.delete('/sessions/:userId', async (req, res) => {
     handleRouteError(err, req, res);
   }
 });
+
+// Customer uploads are kept for a day, then removed.
+setInterval(() => {
+  sweepOldUploads(CONFIG.uploadsDir, { maxAgeMs: 24 * 3600 * 1000 }).catch(() => {});
+}, 3600 * 1000);
 
 // Safety net: a customer tab the ledger still counts as open, but that no session holds, was closed
 // without a report. Report it now, so billing stops instead of waiting for the frontend's cap.
