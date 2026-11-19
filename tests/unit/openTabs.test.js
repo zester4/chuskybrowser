@@ -39,6 +39,7 @@ describe('open tab ledger', () => {
     const ledger = createOpenTabLedger({ filePath: null });
     ledger.open('t1', 'acc:dan');
     expect(ledger.size()).toBe(1);
+    expect(ledger.entries()).toEqual([expect.objectContaining({ tabId: expect.any(String), userId: expect.any(String) })]);
     expect(ledger.takeLeftovers()).toEqual([]);
   });
 

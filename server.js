@@ -80,6 +80,7 @@ import { killProcessIds } from './lib/browser-processes.js';
 import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profilePathsFromProcessSnapshot } from './lib/process-ownership.js';
 import { killWindowsProcessTree, refreshWindowsProcesses } from './lib/windows-processes.js';
 import { createOpenTabLedger } from './lib/open-tabs.js';
+import { findOrphanTabs } from './lib/tab-reaper.js';
 import {
   safePageUrl, urlDomain, hashIdentifier,
   isDeadContextError, isPageCrashedError, isTimeoutError,
@@ -176,6 +177,14 @@ for (const left of openTabs.takeLeftovers()) {
 // Billing is for customer tabs only. Their userId is "accountId:endUserId".
 function billingAccountId(userId) {
   return typeof userId === 'string' && userId.includes(':') ? userId.split(':')[0] : null;
+}
+
+// Bills the end of one customer tab. The frontend keeps the first close it receives for a tab,
+// so a repeat report is harmless.
+function reportTabClosed(userId, tabId, reason) {
+  openTabs.close(tabId);
+  const accountId = billingAccountId(String(userId || ''));
+  if (accountId) usageReporter.report({ type: 'tab_close', accountId, tabId, closedAt: new Date().toISOString(), reason });
 }
 
 // Login vault. Off until both CHUSKY_VAULT_KEY (32 random bytes, base64) and CHUSKY_VAULT_FILE are set.
@@ -7667,10 +7676,12 @@ app.delete('/tabs/:tabId', async (req, res) => {
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, req.params.tabId);
     if (found) {
+      // Report the close before any await, so a failed page close still stops billing.
+      found.group.delete(req.params.tabId);
+      reportTabClosed(userId, req.params.tabId, 'closed');
       if (found.tabState.navigateAbort) found.tabState.navigateAbort.abort();
       await clearTabDownloads(found.tabState);
       await safePageClose(found.tabState.page);
-      found.group.delete(req.params.tabId);
       openTabs.close(req.params.tabId);
       setAgent(req.params.tabId);
       { const _l = tabLocks.get(req.params.tabId); if (_l) _l.drain(); tabLocks.delete(req.params.tabId); refreshTabLockQueueDepth(); }
@@ -8071,6 +8082,7 @@ app.delete('/tabs/group/:listItemId', async (req, res) => {
     const group = session?.tabGroups.get(req.params.listItemId);
     if (group) {
       for (const [tabId, tabState] of group) {
+        reportTabClosed(userId, tabId, 'closed');
         await clearTabDownloads(tabState);
         await safePageClose(tabState.page);
         const lock = tabLocks.get(tabId);
@@ -8725,6 +8737,19 @@ app.delete('/sessions/:userId', async (req, res) => {
     handleRouteError(err, req, res);
   }
 });
+
+// Safety net: a customer tab the ledger still counts as open, but that no session holds, was closed
+// without a report. Report it now, so billing stops instead of waiting for the frontend's cap.
+setInterval(() => {
+  const liveTabIds = new Set();
+  for (const session of sessions.values()) {
+    for (const group of session.tabGroups.values()) for (const tabId of group.keys()) liveTabIds.add(tabId);
+  }
+  for (const orphan of findOrphanTabs({ ledger: openTabs.entries(), liveTabIds })) {
+    log('warn', 'reporting a tab that was closed without a report', { tabId: orphan.tabId, openedAt: orphan.openedAt });
+    reportTabClosed(orphan.userId, orphan.tabId, 'reaped');
+  }
+}, 60000);
 
 // Cleanup stale sessions
 setInterval(() => {
