@@ -2518,6 +2518,13 @@ async function closeSession(userId, session, {
 
   const key = normalizeUserId(userId);
 
+  // A page made ahead of time is closed with its session.
+  if (session.sparePage) {
+    const spare = session.sparePage;
+    session.sparePage = null;
+    spare.then((s) => { if (s) { releasePageLease(session, s.lease); return safePageClose(s.page); } }).catch(() => {});
+  }
+
   // Billing: every tab still open is closed now, and unsent proxy bytes are sent once.
   // Without this, tabs closed by session end, idle expiry or a browser restart would be billed forever.
   if (!session._billed) {
@@ -2702,7 +2709,28 @@ async function closeLeasedPage(session, page, lease) {
   }
 }
 
+// Makes one blank page ahead of the next tab, so the next tab does not wait for Firefox to open one.
+function warmSparePage(session) {
+  if (!session || session.sparePage || !session.context) return;
+  session.sparePage = createLeasedPage(session).catch(() => null);
+}
+
 async function createPageWithRecoveryForUser(userId, session, { trace = false } = {}) {
+  const pending = session?.sparePage;
+  if (pending) {
+    session.sparePage = null;
+    const spare = await pending;
+    if (spare && !spare.page.isClosed()) {
+      warmSparePage(session);
+      return { session, page: spare.page, lease: spare.lease };
+    }
+  }
+  const made = await createFreshPageForUser(userId, session, { trace });
+  warmSparePage(made.session);
+  return made;
+}
+
+async function createFreshPageForUser(userId, session, { trace = false } = {}) {
   const key = normalizeUserId(userId);
   return createPageWithSessionRecovery({
     userId: key,
@@ -7756,18 +7784,26 @@ app.delete('/tabs/:tabId', async (req, res) => {
       found.group.delete(req.params.tabId);
       reportTabClosed(userId, req.params.tabId, 'closed');
       if (found.tabState.navigateAbort) found.tabState.navigateAbort.abort();
-      await clearTabDownloads(found.tabState);
-      await safePageClose(found.tabState.page);
       openTabs.close(req.params.tabId);
       setAgent(req.params.tabId);
       { const _l = tabLocks.get(req.params.tabId); if (_l) _l.drain(); tabLocks.delete(req.params.tabId); refreshTabLockQueueDepth(); }
       dropEmptyTabGroup(session, found.listItemId, found.group);
       refreshActiveTabsGauge();
       log('info', 'tab closed', { reqId: req.reqId, tabId: req.params.tabId, userId });
+      // Answer now. The page closes after the client has its answer, so release is not held up by Firefox.
+      res.json({ ok: true });
+      try {
+        await clearTabDownloads(found.tabState);
+        await safePageClose(found.tabState.page);
+      } catch (closeErr) {
+        log('warn', 'tab page close failed after response', { reqId: req.reqId, tabId: req.params.tabId, error: closeErr.message });
+      }
+      return;
     }
     res.json({ ok: true });
   } catch (err) {
     log('error', 'tab close failed', { reqId: req.reqId, error: err.message });
+    if (res.headersSent) return;
     handleRouteError(err, req, res);
   }
 });
