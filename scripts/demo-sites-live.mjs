@@ -33,6 +33,9 @@ const SITES = [
   { key: 'zillow', url: 'https://www.zillow.com/', query: 'Austin, TX', cart: false },
 ];
 
+// Text that means the site stopped us, even when the server reports the page as ok.
+const BLOCK_TEXT = /Additional Verification Required|Ray ID|verify you are (a )?human|are you a robot|captcha|access denied/i;
+
 function parseArgs(argv) {
   const opts = { only: null, pause: 4000, ttl: 3600, dump: false };
   for (let i = 0; i < argv.length; i++) {
@@ -109,6 +112,8 @@ async function runSite(client, site, tabId, opts, ctx) {
     String(snap.snapshot || '').split(/\r?\n/).slice(0, 60).forEach((l) => console.log(`    ${l}`));
     return result;
   }
+  const pageText = (await client.snapshot(tabId).catch(() => ({ snapshot: '' }))).snapshot || '';
+  if (BLOCK_TEXT.test(pageText)) result.state = 'block';
   if (result.state !== 'ok' && result.state !== 'no_results') {
     log(`page state is "${result.state}". Not continuing. Take over with the control link below if you want to go further.`);
     const controlUrl = await linkFor(ctx.baseUrl, ctx.accessKey, ctx.userId, tabId, { control: true, ttlSeconds: opts.ttl }).catch(() => null);
@@ -126,11 +131,13 @@ async function runSite(client, site, tabId, opts, ctx) {
   await client.type(tabId, { ref: searchRef, text: site.query, pressEnter: true });
   result.actions.push(`searched "${site.query}"`);
   log(`searched for "${site.query}"`);
-  await sleep(opts.pause);
-
-  // Action 2: open the first result.
-  const results = await client.snapshot(tabId);
-  const first = pickContentLinks(results.snapshot)[0];
+  // Action 2: open the first result. Results load after the search, so poll for them.
+  let first = null;
+  for (let i = 0; i < 6 && !first; i++) {
+    await sleep(opts.pause);
+    const results = await client.snapshot(tabId);
+    first = pickContentLinks(results.snapshot)[0] || null;
+  }
   if (!first) {
     log('no result links found');
     return result;
