@@ -4,6 +4,7 @@
 //   node scripts/demo-sites-live.mjs                 # all five sites
 //   node scripts/demo-sites-live.mjs --only target   # one site by key
 //   node scripts/demo-sites-live.mjs --pause 6000    # slower, easier to follow
+//   node scripts/demo-sites-live.mjs --dump --only target   # print the first page's snapshot lines, to tune selectors
 //
 // What it does, per site (one tab each, all in the same browser session):
 //   1. Open the site and print a live view link for it straight away.
@@ -33,7 +34,7 @@ const SITES = [
 ];
 
 function parseArgs(argv) {
-  const opts = { only: null, pause: 4000, ttl: 3600 };
+  const opts = { only: null, pause: 4000, ttl: 3600, dump: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = () => {
@@ -45,9 +46,10 @@ function parseArgs(argv) {
       case '--only': opts.only = next(); break;
       case '--pause': opts.pause = Number(next()); break;
       case '--ttl': opts.ttl = Number(next()); break;
+      case '--dump': opts.dump = true; break;
       case '-h':
       case '--help':
-        console.log('Usage: node scripts/demo-sites-live.mjs [--only KEY] [--pause MS] [--ttl SECONDS]');
+        console.log('Usage: node scripts/demo-sites-live.mjs [--only KEY] [--pause MS] [--ttl SECONDS] [--dump]');
         process.exit(0);
         break;
       default:
@@ -101,6 +103,12 @@ async function runSite(client, site, tabId, opts, ctx) {
   // Check the page state first. Captcha, login walls and blocks stop here.
   const st = await client.state(tabId).catch(() => null);
   result.state = st?.state?.kind || 'unknown';
+  if (opts.dump) {
+    const snap = await client.snapshot(tabId);
+    console.log(`  [${site.key}] snapshot, first 60 lines:`);
+    String(snap.snapshot || '').split(/\r?\n/).slice(0, 60).forEach((l) => console.log(`    ${l}`));
+    return result;
+  }
   if (result.state !== 'ok' && result.state !== 'no_results') {
     log(`page state is "${result.state}". Not continuing. Take over with the control link below if you want to go further.`);
     const controlUrl = await linkFor(ctx.baseUrl, ctx.accessKey, ctx.userId, tabId, { control: true, ttlSeconds: opts.ttl }).catch(() => null);
